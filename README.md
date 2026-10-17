@@ -24,11 +24,11 @@ curl -L -o /tmp/vietnam-free.gpkg.zip \
   https://download.geofabrik.de/asia/vietnam-latest-free.gpkg.zip
 unzip -o /tmp/vietnam-free.gpkg.zip -d data/raw/osm/geofabrik_vietnam-261016
 
-uv run jupyter lab       # then run notebooks 01 and 03, in that order
+uv run jupyter lab       # then run notebooks 01 and 02, in that order
 ```
 
 Keep the folder name `geofabrik_vietnam-261016` even though your download is
-newer, because notebook 03 reads that exact path. "Latest" changes every day,
+newer, because notebook 01 reads that exact path. "Latest" changes every day,
 so you get roads as of your download date, not the 2026-10-16 snapshot recorded
 in `data/raw/osm/geofabrik_vietnam-261016.json`. If road counts differ from the
 committed notebook output, that is the reason.
@@ -37,9 +37,8 @@ committed notebook output, that is the reason.
 
 | Step | Reads | Writes (`data/processed/`) |
 |---|---|---|
-| `01_preparation` | GADM communes, 10 m LULC clip (also searches Planetary Computer, so needs internet) | `communes_built_frac.gpkg`: built-up fraction per commune |
-| `02_esda` | `communes_built_frac.gpkg` | nothing. Moran's I / LISA per commune. **Superseded**: it found city cores, not corridors |
-| `03_highways` | `communes_built_frac.gpkg`, Geofabrik extract | `communes_ql18_corridor.gpkg`: communes within 2 km of QL18 (the study area) |
+| `01_preparation` | GADM communes, Geofabrik extract, 10 m LULC clip (searches Planetary Computer, so needs internet) | `communes_ql18_corridor.gpkg`: communes within 2 km of QL18 (the study area), with `dist_to_ql18_m`, `is_crossed_by_ql18`, `built_frac` |
+| `02_esda` | `communes_ql18_corridor.gpkg` | nothing. Moran's I / LISA per commune (Queen, island attached by KNN-1). **Superseded as a method**: on the whole delta it found city cores, not corridors |
 
 Ribbon detection, the next step, will read the corridor file. All files are in
 EPSG:32648 (UTM 48N).
@@ -54,11 +53,13 @@ ignored until you add it there.
 | File | Used by | Source |
 |---|---|---|
 | `raw/gadm41_VNM_3.json` | 01 | [GADM 4.1](https://gadm.org/download_country.html), Vietnam level 3 (communes), EPSG:4326 |
-| `raw/lulc/lulc_48Q-2023_*.tif` + `.json` | 01 | `fetch_landcover` cache of Impact Observatory 10 m LULC 2023 |
-| `raw/osm/geofabrik_vietnam-261016.json`, `…/README` | 03 | Provenance of the Geofabrik extract. The `.gpkg` itself is downloaded by hand (see Quick start) |
+| `raw/lulc/lulc_48Q-2023_3d7e0d2660ca.tif` + `.json` | 01 | `fetch_landcover` cache of Impact Observatory 10 m LULC 2023, clipped to the corridor |
+| `raw/osm/geofabrik_vietnam-261016.json`, `…/README` | 01 | Provenance of the Geofabrik extract. The `.gpkg` itself is downloaded by hand (see Quick start) |
 
 Older copies of the repo also have files in `data/raw/` that nothing reads any
 more. They are not committed: `landuse.tif` (pre-fetcher LULC clip),
+`lulc/lulc_48Q-2023_30be6675327e.*` (the old 9-province clip, replaced by the
+corridor clip),
 `gadm41_VNM_2.json` (districts, only for `LEVEL = 'DISTRICT'` in 01),
 `osm/highways_*.gpkg` and `osm/_http/` (Overpass cache, replaced by Geofabrik),
 `libpysal_mexico_*` and `ons_lad_*` (textbook practice data).
@@ -270,7 +271,7 @@ flowchart LR
 | Access | `pystac-client`, `pystac` | Search the 10 m annual LULC collection by bbox (WGS 84) and year; returns STAC items whose assets are COGs | `stac.py`, `landcover.py` |
 | | `planetary-computer` | `sign_inplace` modifier: appends short-lived SAS tokens to asset hrefs so rasterio can read them | `stac.py` |
 | | `osmnx` | `features_from_polygon` only — raw OSM ways with original tags, never a routing graph (see Highways) | `highways.py` |
-| | `requests` | `ConnectionError` is what the Overpass retry/backoff loop catches; 03 also uses it to probe `/api/status` | `highways.py`, 03 |
+| | `requests` | `ConnectionError` is what the Overpass retry/backoff loop catches | `highways.py` |
 | Geo core | `geopandas` | The table every vector layer lives in (communes, AOI, roads); `sjoin`, `dissolve`, `to_crs` | everywhere |
 | | `shapely` 2 | Vectorized geometry ops (buffer, simplify, union) over GEOS | `highways.py` |
 | | `pyproj` | CRS objects and `Transformer(always_xy=True)` for bare geometries (Overpass polygon) over PROJ | `highways.py`, `crs.py` |
@@ -292,11 +293,12 @@ rasterio and pyogrio). Wheels bundle their own copies of PROJ and GDAL, so raste
 and pyogrio can carry different GDAL versions — usually harmless, but it is the
 first place to look if a format or CRS behaves differently between the two.
 
-The data flow in the current notebooks: `stac` finds the LULC item → `rasterio`
-clips its window to `raw/lulc/` → `rasterstats` reduces it to built-up fraction per commune (01) → `libpysal` weights +
-`esda` Moran/LISA + `splot` plots on that table (02, superseded) → Geofabrik
-centrelines read by `load_highways` and tiered by `ref` (03), which feed the
-ribbon detection that replaces 02.
+The data flow in the current notebooks: Geofabrik centrelines read by
+`load_highways` and tiered by `ref` pick out QL18 and its 2 km corridor (01) →
+`stac` finds the LULC item → `rasterio` clips its window to `raw/lulc/` →
+`rasterstats` reduces it to built-up fraction per corridor commune (01) →
+`libpysal` weights + `esda` Moran/LISA + `splot` plots on that table (02, a
+baseline). Ribbon detection, which replaces 02 as the method, comes next.
 
 **Declared but not yet imported:** `rioxarray` (an xarray-based alternative to
 the rasterio read, useful once ribbon detection needs raster algebra),
@@ -315,7 +317,7 @@ Since 2026-10 the public Overpass server refuses scripts, so roads come from a
 local Geofabrik extract. The top-level [Quick start](#quick-start) shows how to
 download it (740 MB zip). If you deliberately switch to a new snapshot, unzip it
 into `raw/osm/geofabrik_vietnam-<yymmdd>/`, copy the OSM timestamp from its
-README into a matching `.json` sidecar, and update the path in notebook 03 and
+README into a matching `.json` sidecar, and update the path in notebook 01 and
 `.gitignore`.
 
 ```python
@@ -325,14 +327,14 @@ from desakota.highways import add_route_tier, load_highways
 from desakota.paths import DataLayout
 
 layout = DataLayout.from_env().ensure()
-communes = gpd.read_file(layout.processed / 'communes_built_frac.gpkg')  # EPSG:32648
+communes = gpd.read_file(layout.processed / 'communes_ql18_corridor.gpkg')  # EPSG:32648
 
 extract_path = layout.raw / 'osm' / 'geofabrik_vietnam-261016' / 'vietnam.gpkg'
 highways = add_route_tier(load_highways(extract_path, communes))  # EPSG:32648
 highways.plot(column='tier', legend=True)
 ```
 
-Reading Bắc Ninh + Hải Dương + Sóc Sơn takes about 65 s with the extract on
+Reading Bắc Ninh + Hải Dương + Quảng Ninh + Sóc Sơn takes about 80 s with the extract on
 `/mnt/c` (the 1.4 GB GeoPackage is read through 9P); put it on ext4 via
 `DESAKOTA_DATA_DIR` if that matters. `fetch_highways` (Overpass) is kept for a
 private Overpass instance; with the public one it will exhaust its retries.
@@ -591,7 +593,7 @@ Parameters follow the unit rule (`buffer_m`, `simplify_tol_m`).
 - **`raw/` (fetchers only):** `<source>_<cache key>.<ext>`, plus a `.json`
   sidecar with the same stem, and `.partial.<ext>` while the file is being
   written. Examples: `highways_828cfcb54105.gpkg`,
-  `lulc_48Q-2023_30be6675327e.tif`.
+  `lulc_48Q-2023_3d7e0d2660ca.tif`.
 - **Formats:** `.gpkg` for vector data, with one layer per file and the layer
   name equal to the stem. `.tif` (tiled, compressed) for rasters.
 - **Notebooks:** `NN_<topic>.ipynb`, with a two-digit reading-order number.

@@ -29,12 +29,12 @@ data/raw/*
 !data/raw/.gitkeep
 # 01: GADM 4.1 communes (admin level 3)
 !data/raw/gadm41_VNM_3.json
-# 01: 10 m LULC clip + sidecar (fetch_landcover cache)
+# 01: 10 m LULC clip of the QL18 corridor + sidecar (fetch_landcover cache)
 !data/raw/lulc/
 data/raw/lulc/*
-!data/raw/lulc/lulc_48Q-2023_30be6675327e.tif
-!data/raw/lulc/lulc_48Q-2023_30be6675327e.json
-# 03: Geofabrik extract. The 1.4 GB .gpkg is downloaded by hand (README Quick
+!data/raw/lulc/lulc_48Q-2023_3d7e0d2660ca.tif
+!data/raw/lulc/lulc_48Q-2023_3d7e0d2660ca.json
+# 01: Geofabrik extract. The 1.4 GB .gpkg is downloaded by hand (README Quick
 # start); only its provenance is tracked.
 !data/raw/osm/
 data/raw/osm/*

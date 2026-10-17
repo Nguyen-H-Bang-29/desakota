@@ -6,10 +6,11 @@ River Delta. Hypothesis: building along national highways produces McGee-style
 
 ## Quick orientation
 
-- **Pipeline:** `01_preparation` (GADM communes + 10 m LULC →
-  `processed/communes_built_frac.gpkg`) → `03_highways` (+ Geofabrik roads →
-  `processed/communes_ql18_corridor.gpkg`, the study area). `02_esda` is
-  superseded and only reads 01's output. Ribbon detection comes next.
+- **Pipeline:** `01_preparation` (GADM communes + Geofabrik roads → QL18
+  corridor, then 10 m LULC clipped to it → `processed/communes_ql18_corridor.gpkg`,
+  the study area with `built_frac`) → `02_esda` (commune Moran's I / LISA on the
+  corridor; superseded as a method, kept as a baseline). Ribbon detection comes
+  next. `03_highways` was folded into 01 on 2026-10-17.
 - **Setup and data download:** README "Quick start". Only one input is not in
   git: the 1.4 GB Geofabrik extract.
 - **Checks before calling work done:** `uv run ruff format .` ·
@@ -29,20 +30,22 @@ built-up *density* finds cities, whereas desakota is defined by *mixing*. The
 replacement follows Verbeek, Boussauw & Pisman (2014), *Landscape and Urban
 Planning* 128:48-59 (doi:10.1016/j.landurbplan.2014.04.022): detect the
 linear objects first, then aggregate a **length density (m/km²)**. The
-commune-level ESDA (`02_esda`) is superseded; don't preserve it or stay
-compatible with it. `01_preparation` stays, because its commune layer is
-03's input.
+commune-level ESDA (`02_esda`) is superseded as a method; it now runs on the
+corridor only as a baseline, so don't build on it.
 
 **In scope right now:**
 - **Study area: the QL18 corridor**, not the whole delta (decided 2026-10-11).
   It is the old national road (`tier == 'national'`, selected with
-  `compute_is_on_route(highways, 'QL18')`) from Nội Bài (Sóc Sơn) through Bắc
-  Ninh to Chí Linh, where it leaves the 9-province AOI for Quảng Ninh. The AOI
-  is the communes within `corridor_buffer_m` (2 km) of it, saved as
-  `processed/communes_ql18_corridor.gpkg` with `dist_to_ql18_m` and
-  `is_crossed_by_ql18`; built by `notebooks/03_highways.ipynb`. The co-signed
-  expressway sections ("CT.01;QL.1;QL.18") have no frontage, so they are
-  context, not corridor.
+  `compute_is_on_route(highways, 'QL18')`) from Bắc Ninh city through Chí Linh
+  and all of Quảng Ninh to Móng Cái (Quảng Ninh included 2026-10-17, so the AOI
+  is no longer limited to the 9 RRD provinces; communes join by distance,
+  whatever their province). The AOI is the communes within `CORRIDOR_BUFFER_M`
+  (2 km) of it, saved as `processed/communes_ql18_corridor.gpkg` with
+  `dist_to_ql18_m`, `is_crossed_by_ql18` and `built_frac`; built by
+  `notebooks/01_preparation.ipynb`. The co-signed expressway sections
+  (Nội Bài–Bắc Ninh, "CT.09;CT.38;QL.18") have no frontage, so they are
+  context, not corridor. LULC comes from tile 48Q only: the corridor ends at
+  108.05°E, past zone 48's nominal edge, but inside 48Q's footprint (to 108.16°E).
 - OSM road centrelines (`desakota.highways`), tiered by `ref` into
   expressway / national / provincial / other.
 - Ribbon detection on the built-up signal: buffer, cluster, keep elongated
