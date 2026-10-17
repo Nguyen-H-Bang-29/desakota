@@ -1,0 +1,82 @@
+[project]
+name = "desakota"
+version = "0.1.0"
+description = "Exploratory spatial data analysis of urbanization and sprawl in Vietnam's Red River Delta"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "numpy>=2.1",
+    "pandas>=2.2",
+    "matplotlib>=3.9",
+    "shapely>=2.1.2",
+    "pystac-client>=0.9.0",
+    "planetary-computer>=1.0.0",
+    "folium>=0.20.0",
+    "geopandas>=1.1.4",
+    "pyogrio>=0.10",
+    "pyproj>=3.7",
+    "rasterio>=1.5",
+    "ipython>=9.17.0",
+    "libpysal>=4.12",
+    "esda>=2.6",
+    "splot>=1.1.7",
+    "mapclassify>=2.8",
+    "contextily>=1.6",
+    "rich>=15.0.0",
+    "rioxarray>=0.23.0",
+    "rasterstats>=0.21.0",
+    "osmnx>=2.1.1",
+    "requests>=2.32",
+]
+
+[dependency-groups]
+dev = [
+    "jupyterlab>=4.3",
+    "ipykernel>=6.29",
+    "pytest>=8.3",
+    "ruff>=0.8",
+    "pyright>=1.1.390",
+    "pandas-stubs>=3.0.5.260914",
+    "types-shapely>=2.1.0.20260728",
+    "types-requests>=2.33.0.20260906",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+extend-include = ["*.ipynb"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "UP",       # pyupgrade
+    "B",        # flake8-bugbear
+    "C4",       # flake8-comprehensions
+    "T20",      # flake8-print (no print() in library code)
+    "RUF",      # ruff-specific
+]
+ignore = ["E501"]   # line length is the formatter's job
+
+[tool.ruff.lint.per-file-ignores]
+# Notebooks are an exploratory surface: printing is the output mechanism,
+# imports legitimately follow a markdown/setup cell, and a trailing bare
+# expression is how you render a value.
+"notebooks/*" = ["T20", "E402", "B018"]
+
+[tool.ruff.format]
+quote-style = "single"
+indent-style = "space"
+
+[tool.pyright]
+pythonVersion = "3.14"
+pythonPlatform = "Linux"
+typeCheckingMode = "strict"
+reportMissingImports = true
+reportMissingTypeStubs = false
+exclude = [".venv", "data", "**/__pycache__", "**/.ipynb_checkpoints"]

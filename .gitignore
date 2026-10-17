@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Virtual envs
+.venv/
+venv/
+
+# Env/config
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data. interim/ and processed/ are rebuilt by the notebooks, so never tracked.
+data/interim/*
+data/processed/*
+!data/**/.gitkeep
+
+# raw/ is an allowlist: only inputs the current notebooks read. A new raw file
+# stays untracked until it is added here on purpose.
+data/raw/*
+!data/raw/.gitkeep
+# 01: GADM 4.1 communes (admin level 3)
+!data/raw/gadm41_VNM_3.json
+# 01: 10 m LULC clip + sidecar (fetch_landcover cache)
+!data/raw/lulc/
+data/raw/lulc/*
+!data/raw/lulc/lulc_48Q-2023_30be6675327e.tif
+!data/raw/lulc/lulc_48Q-2023_30be6675327e.json
+# 03: Geofabrik extract. The 1.4 GB .gpkg is downloaded by hand (README Quick
+# start); only its provenance is tracked.
+!data/raw/osm/
+data/raw/osm/*
+!data/raw/osm/geofabrik_vietnam-261016.json
+!data/raw/osm/geofabrik_vietnam-261016/
+data/raw/osm/geofabrik_vietnam-261016/*
+!data/raw/osm/geofabrik_vietnam-261016/README
+
+# Figures/exports
+outputs/
+
+# Editor
+.vscode/*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db

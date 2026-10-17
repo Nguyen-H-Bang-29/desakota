@@ -1,0 +1,11 @@
+{
+  "source": "Geofabrik free GIS export",
+  "source_url": "https://download.geofabrik.de/asia/vietnam-latest-free.gpkg.zip",
+  "archive": "vietnam-261016-free.gpkg.zip",
+  "osm_data_as_of": "2026-10-16T20:21:21Z",
+  "downloaded_by": "user, manually (Overpass public endpoint refuses scripted use)",
+  "unzipped_at": "2026-10-17",
+  "license": "ODbL 1.0",
+  "layers_doc": "https://download.geofabrik.de/osm-data-in-gis-formats-free.pdf",
+  "crs": "OGC:CRS84 (lon, lat)"
+}
