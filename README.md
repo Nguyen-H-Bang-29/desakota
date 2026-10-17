@@ -71,16 +71,16 @@ Under `/mnt/c` every file access goes through 9P, which is about 10x slower
 ([Microsoft docs](https://learn.microsoft.com/windows/wsl/filesystems#file-storage-and-performance-across-file-systems)).
 Installs feel it most: uv cannot hardlink from its ext4 cache into a `/mnt/c`
 venv, so it copies every file (measured: 5 m 38 s for 2 packages). If the repo
-has to stay on `/mnt/c`, move just the venv or the data:
+has to stay on `/mnt/c`, keep the venv on ext4 and symlink it in. The sync then
+takes seconds, and `.venv` stays where uv and VS Code expect it:
 
 ```bash
-export UV_PROJECT_ENVIRONMENT=~/.venvs/desakota   # venv on ext4
-export DESAKOTA_DATA_DIR=~/data/desakota          # data tree on ext4
-export UV_LINK_MODE=copy                          # silences uv's hardlink warning; no speed-up
+UV_PROJECT_ENVIRONMENT=~/.venvs/desakota uv sync   # build the venv on ext4 (about 3 s)
+rm -rf .venv && ln -s ~/.venvs/desakota .venv       # uv and VS Code follow the link
 ```
 
-Put these in your shell profile. Nothing reads `.env`; `.env.example` only
-lists the variables.
+The data tree can move too: `export DESAKOTA_DATA_DIR=~/data/desakota` in your
+shell profile. Nothing reads `.env`; `.env.example` only lists the variables.
 
 **uv on PATH.** The installer puts uv in `~/.local/bin`. If `uv` is not found,
 add `export PATH="$HOME/.local/bin:$PATH"` to your profile.

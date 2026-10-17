@@ -127,9 +127,9 @@ Never create or run the `.venv` from Windows; the layouts are incompatible.
 If the checkout is under `/mnt/c`, installs are slow but not hung: uv can't
 hardlink from its ext4 cache across 9P, so it copies every file (measured:
 5 m 38 s for 2 packages). Run long `uv sync` / `uv add` calls in the
-background. `UV_PROJECT_ENVIRONMENT=~/.venvs/desakota` moves the venv to ext4;
-`UV_LINK_MODE=copy` only silences the warning. Nothing loads `.env`; env vars
-must be exported in the shell.
+background. On this machine `.venv` is a symlink to `~/.venvs/desakota` on
+ext4 (sync in about 3 s); don't replace it with a real directory. Nothing loads
+`.env`; env vars must be exported in the shell.
 
 ## Conventions
 

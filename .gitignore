@@ -9,7 +9,8 @@ __pycache__/
 .mypy_cache/
 
 # Virtual envs
-.venv/
+# No trailing slash, so a .venv symlink is ignored too
+.venv
 venv/
 
 # Env/config
