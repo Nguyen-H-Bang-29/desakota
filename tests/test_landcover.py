@@ -14,7 +14,11 @@ import rasterio
 from shapely.geometry import box
 
 from desakota.crs import CRS_UTM, CRS_WGS84
-from desakota.landcover import compute_built_frac, fetch_landcover
+from desakota.landcover import (
+    compute_built_frac,
+    compute_built_frac_for_tessellation,
+    fetch_landcover,
+)
 
 LEGEND = {1: 'Water', 2: 'Trees', 7: 'Built area'}
 ORIGIN_X, ORIGIN_Y = 600_000.0, 2_350_000.0  # EPSG:32648, top-left corner
@@ -255,3 +259,94 @@ def test_built_frac_rejects_crs_mismatch(source_tif: Path) -> None:
     # Act / Assert
     with pytest.raises(ValueError, match='does not match'):
         _built_frac(aoi, source_tif)
+
+
+# --- compute_built_frac_for_tessellation -------------------------------------
+
+
+def _tessellation_frac(cells: gpd.GeoDataFrame, raster: Path) -> pd.Series:
+    return compute_built_frac_for_tessellation(
+        cells, raster, LEGEND, built_area_label='Built area', water_label='Water'
+    )
+
+
+def test_tessellation_matches_zonal_stats_on_pixel_aligned_cells(source_tif: Path) -> None:
+    # Arrange: four pixel-aligned quadrants of the 1 km square
+    cells = gpd.GeoDataFrame(
+        geometry=[
+            box(ORIGIN_X + dx, ORIGIN_Y - dy - 500, ORIGIN_X + dx + 500, ORIGIN_Y - dy)
+            for dx in (0, 500)
+            for dy in (0, 500)
+        ],
+        crs=CRS_UTM,
+    )
+
+    # Act
+    fast = _tessellation_frac(cells, source_tif)
+
+    # Assert
+    pd.testing.assert_series_equal(fast, _built_frac(cells, source_tif), check_names=False)
+
+
+def test_tessellation_assigns_each_pixel_to_the_cell_holding_its_centre(
+    source_tif: Path,
+) -> None:
+    # Arrange: split along x = 505 m, through the middle of pixel column 50 (first built
+    # column, centre at 505 m). Its centre sits on the shared edge; it must be counted
+    # exactly once, so the two cells' pixel counts add up to the whole raster.
+    left = box(ORIGIN_X, ORIGIN_Y - 1_000, ORIGIN_X + 504, ORIGIN_Y - 10)
+    right = box(ORIGIN_X + 504, ORIGIN_Y - 1_000, ORIGIN_X + 1_000, ORIGIN_Y - 10)
+    cells = gpd.GeoDataFrame(geometry=[left, right], crs=CRS_UTM)
+
+    # Act
+    built_frac = _tessellation_frac(cells, source_tif)
+
+    # Assert: left is all water (column 50's centre at 505 m is right of 504 m) -> NaN;
+    # right is all built.
+    assert np.isnan(built_frac.iloc[0])
+    assert built_frac.iloc[1] == 1.0
+
+
+def test_tessellation_keeps_the_index_and_handles_absent_classes(source_tif: Path) -> None:
+    # Arrange: trees-only strip and water-only block, with a non-range index
+    cells = gpd.GeoDataFrame(
+        geometry=[
+            box(ORIGIN_X + 500, ORIGIN_Y - 10, ORIGIN_X + 1_000, ORIGIN_Y),
+            box(ORIGIN_X, ORIGIN_Y - 500, ORIGIN_X + 500, ORIGIN_Y),
+        ],
+        index=[7, 3],
+        crs=CRS_UTM,
+    )
+
+    # Act
+    built_frac = _tessellation_frac(cells, source_tif)
+
+    # Assert
+    assert built_frac.index.tolist() == [7, 3]
+    assert built_frac.loc[7] == 0.0
+    assert np.isnan(built_frac.loc[3])
+
+
+def test_tessellation_spans_several_read_strips(
+    source_tif: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Arrange: force 7-row strips so cells straddle strip boundaries
+    monkeypatch.setattr('desakota.landcover._TESSELLATION_STRIP_ROWS', 7)
+    cells = _aoi(ORIGIN_X, ORIGIN_Y - 1_000, ORIGIN_X + 1_000, ORIGIN_Y)
+
+    # Act / Assert: 99 rows x 50 built of 99 x 50 + 50 trees non-water pixels
+    assert _tessellation_frac(cells, source_tif).iloc[0] == pytest.approx(4950 / 5000)
+
+
+def test_tessellation_rejects_cells_beyond_raster(source_tif: Path) -> None:
+    cells = _aoi(ORIGIN_X + 500, ORIGIN_Y - 500, ORIGIN_X + 1_500, ORIGIN_Y)
+
+    with pytest.raises(ValueError, match='beyond raster'):
+        _tessellation_frac(cells, source_tif)
+
+
+def test_tessellation_rejects_crs_mismatch(source_tif: Path) -> None:
+    cells = _aoi(ORIGIN_X, ORIGIN_Y - 500, ORIGIN_X + 500, ORIGIN_Y).to_crs(CRS_WGS84)
+
+    with pytest.raises(ValueError, match='does not match'):
+        _tessellation_frac(cells, source_tif)

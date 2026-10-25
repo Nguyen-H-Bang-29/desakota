@@ -26,18 +26,29 @@ from typing import Any, Final
 from urllib.parse import urlsplit, urlunsplit
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 import pystac
 import pystac_client
 import rasterio
 import rasterstats
+from rasterio.features import (
+    rasterize,  # pyright: ignore[reportUnknownVariableType] -- rasterio stubs are incomplete
+)
 from rasterio.windows import Window
+from rasterio.windows import (
+    bounds as window_bounds,  # pyright: ignore[reportUnknownVariableType] -- rasterio stubs are incomplete
+)
+from shapely.geometry import box
 
 ASSET_KEY: Final[str] = 'data'
 """Item asset holding the classified raster."""
 
 _STRIP_ROWS: Final[int] = 2048
 """Rows read per request; bounds memory to ~50 MB per strip at uint8."""
+
+_TESSELLATION_STRIP_ROWS: Final[int] = 512
+"""Rows per strip when counting by cell; the int32 cell-id raster is 4 bytes/pixel."""
 
 
 def _open(fp: str | Path, mode: str = 'r', **profile: Any) -> Any:
@@ -236,16 +247,7 @@ def compute_built_frac(
             extends beyond the raster.
     """
     with _open(raster_path) as src:
-        raster_crs: Any = src.crs
-        left, bottom, right, top = src.bounds
-    if aoi.crs != raster_crs:
-        raise ValueError(f'AOI CRS {aoi.crs} does not match raster CRS {raster_crs}')
-    minx, miny, maxx, maxy = aoi.total_bounds
-    if minx < left or miny < bottom or maxx > right or maxy > top:
-        raise ValueError(
-            f'AOI bounds {aoi.total_bounds} extend beyond raster bounds '
-            f'{(left, bottom, right, top)}; pixels outside would be silently uncounted'
-        )
+        _require_inside(aoi, src)
 
     # rasterstats ships no stubs at all; categorical=True with the default
     # geojson_out=False returns one class-label -> pixel-count dict per polygon,
@@ -267,3 +269,97 @@ def compute_built_frac(
         axis=1
     )
     return result  # pyright: ignore
+
+
+def compute_built_frac_for_tessellation(
+    cells: gpd.GeoDataFrame,
+    raster_path: str | Path,
+    legend: dict[int, str],
+    built_area_label: str,
+    water_label: str,
+) -> pd.Series:
+    """`compute_built_frac` for many non-overlapping cells (a hex grid), in one pass.
+
+    Each pixel is assigned to the cell containing its centre by rasterizing the cells
+    onto the raster grid (GDAL's pixel-centre rule, as `rasterstats` uses by default),
+    then built and non-water pixels are counted per cell with `np.bincount`. That is
+    O(pixels) rather than one windowed read per polygon, so ~10^5 cells take seconds
+    instead of hours. Because a pixel gets exactly one cell id, cells must not
+    overlap; where they do, the later row silently wins.
+
+    Args:
+        cells: Non-overlapping polygons in the raster's CRS, inside its extent.
+        raster_path: Categorical land-cover raster, e.g. from `fetch_landcover`.
+        legend: Pixel value -> class name, from `get_landcover_legend`.
+        built_area_label: Class counted as the numerator, e.g. `"Built area"`.
+        water_label: Class excluded from the denominator, e.g. `"Water"`.
+
+    Returns:
+        Built-area fraction of non-water, non-nodata pixels per cell, indexed like
+        `cells` and named `built_frac`. 0.0 with no built pixels; NaN where a cell
+        holds no non-water pixel centre (open water, or a sliver smaller than a pixel).
+
+    Raises:
+        ValueError: If the CRS does not match the raster's or `cells` extend beyond it.
+    """
+    value_of = {label: value for value, label in legend.items()}
+    built_value, water_value = value_of[built_area_label], value_of[water_label]
+    n_cells = len(cells)
+    built_px = np.zeros(n_cells + 1, dtype=np.int64)  # slot 0 = "no cell"
+    valid_px = np.zeros(n_cells + 1, dtype=np.int64)
+    geometries = cells.geometry.to_numpy()
+
+    with _open(raster_path) as src:
+        _require_inside(cells, src)
+        nodata: int = int(src.nodata) if src.nodata is not None else 0
+        col_off, row_off, width, height = _snapped_window(cells.total_bounds, src)
+        for row in range(row_off, row_off + height, _TESSELLATION_STRIP_ROWS):
+            n_rows = min(_TESSELLATION_STRIP_ROWS, row_off + height - row)
+            strip = Window(col_off, row, width, n_rows)  # pyright: ignore[reportCallIssue] -- Window is an attrs class the stubs leave untyped
+            hits = cells.sindex.query(box(*window_bounds(strip, src.transform)))
+            if len(hits) == 0:
+                continue
+            cell_ids = np.asarray(
+                rasterize(  # pyright: ignore[reportUnknownArgumentType] -- rasterio stubs are incomplete
+                    ((geometries[i], int(i) + 1) for i in hits),
+                    out_shape=(n_rows, width),
+                    transform=src.window_transform(strip),
+                    fill=0,
+                    dtype='int32',
+                ),
+                dtype=np.int32,
+            )
+            lulc = np.asarray(src.read(1, window=strip), dtype=np.uint8)
+            is_counted = (cell_ids > 0) & (lulc != nodata) & (lulc != water_value)
+            valid_px += np.bincount(cell_ids[is_counted], minlength=n_cells + 1)
+            built_px += np.bincount(
+                cell_ids[is_counted & (lulc == built_value)], minlength=n_cells + 1
+            )
+
+    with np.errstate(invalid='ignore', divide='ignore'):
+        frac = np.where(valid_px[1:] > 0, built_px[1:] / valid_px[1:], np.nan)
+    return pd.Series(frac, index=cells.index, name='built_frac')
+
+
+def _require_inside(aoi: gpd.GeoDataFrame, src: Any) -> None:
+    """Raise unless `aoi` shares the raster's CRS and lies within its bounds."""
+    if aoi.crs != src.crs:
+        raise ValueError(f'AOI CRS {aoi.crs} does not match raster CRS {src.crs}')
+    left, bottom, right, top = src.bounds
+    minx, miny, maxx, maxy = aoi.total_bounds
+    if minx < left or miny < bottom or maxx > right or maxy > top:
+        raise ValueError(
+            f'AOI bounds {aoi.total_bounds} extend beyond raster bounds '
+            f'{(left, bottom, right, top)}; pixels outside would be silently uncounted'
+        )
+
+
+def _snapped_window(bbox: Any, src: Any) -> tuple[int, int, int, int]:
+    """(col_off, row_off, width, height) covering `bbox` (minx, miny, maxx, maxy), clamped."""
+    inverse: Any = ~src.transform
+    col_min, row_min = inverse @ (bbox[0], bbox[3])
+    col_max, row_max = inverse @ (bbox[2], bbox[1])
+    col_off, row_off = max(math.floor(col_min), 0), max(math.floor(row_min), 0)
+    width = min(math.ceil(col_max), src.width) - col_off
+    height = min(math.ceil(row_max), src.height) - row_off
+    return col_off, row_off, width, height
