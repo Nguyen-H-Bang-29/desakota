@@ -2,8 +2,11 @@
 
 Does building along Vietnam's national highways create *desakota*, McGee's
 term for scattered, mixed town-and-farm growth, instead of compact cities?
-This notebook project tests that in the Red River Delta, starting with the
-QL18 corridor (Nội Bài, Bắc Ninh, Chí Linh).
+This notebook project tests that along one road first: the QL18 corridor, from
+Bắc Ninh through Chí Linh and Quảng Ninh to Móng Cái.
+
+The working question: **is there ribbon development along QL18, and how serious
+is it?**
 
 The method follows Verbeek et al. (2014). First find the strips of buildings
 along roads ("ribbons"), then measure their length per km², then run spatial
@@ -15,7 +18,7 @@ Needs Linux or WSL (Ubuntu 24.04), `git`, `curl`, `unzip` and
 [uv](https://docs.astral.sh/uv/getting-started/installation/).
 
 ```bash
-git clone <repo-url> ~/projects/desakota && cd ~/projects/desakota
+git clone https://github.com/Nguyen-H-Bang-29/desakota.git ~/projects/desakota && cd ~/projects/desakota
 uv sync                  # installs Python 3.14 and every dependency into .venv
 uv run pytest            # 91 tests, offline, about 30 s
 
@@ -24,7 +27,7 @@ curl -L -o /tmp/vietnam-free.gpkg.zip \
   https://download.geofabrik.de/asia/vietnam-latest-free.gpkg.zip
 unzip -o /tmp/vietnam-free.gpkg.zip -d data/raw/osm/geofabrik_vietnam-261016
 
-uv run jupyter lab       # then run notebooks 01 and 02, in that order
+uv run jupyter lab       # then run the notebooks in number order
 ```
 
 Keep the folder name `geofabrik_vietnam-261016` even though your download is
@@ -42,8 +45,19 @@ committed notebook output, that is the reason.
 | `03_hexagons` | `communes_ql18_corridor.gpkg`, `highways_ql18.gpkg`, the cached LULC clip | `hexes_built_frac_h3r{8,9,10}.gpkg` (built_frac, dist_to_ql18_m per H3 cell over the 2 km band) and `hexes_lisa_built_frac_h3r9.gpkg` (plus LISA quadrant and pseudo p) |
 | `04_corridor_width` | `highways_ql18.gpkg`, GADM communes, a wider LULC clip (downloaded on first run) | nothing. LISA on H3 res 8 for bands of 2/3/5/8 km, and how much High-High area reaches the band edge |
 
-Ribbon detection, the next step, will read the corridor file. All files are in
-EPSG:32648 (UTM 48N).
+All files are in EPSG:32648 (UTM 48N).
+
+## Attempts so far
+
+This is a learning project, so the superseded notebooks stay in, in the order
+they were tried. Each records what it found and why the next one followed. Read
+them as a sequence of attempts, not as one pipeline.
+
+| # | Notebook | Unit and method | What it showed | Why the next attempt |
+|---|---|---|---|---|
+| 1 | `02_esda` | Communes (~2.4 km); Moran's I / LISA on `built_frac` | Strong clustering (I = 0.75 on the delta), but High-High = city cores | A ribbon a few hundred metres wide disappears inside a commune |
+| 2 | `03_hexagons` | H3 res 8/9/10 over the 2 km band; distance decay, LISA | Built share falls steadily with distance from QL18; LISA still finds towns, and most High-High area reaches the band edge | A patch cut off by the band edge looks elongated along the road, exactly like a ribbon |
+| 3 | `04_corridor_width` | H3 res 8, bands of 2–8 km; patches with alpha-shape elongation and road measures | Patches don't stop at 8 km (the Bắc Ninh–Đông Triều fabric is wider than 16 km); elongation can't separate a ribbon from a branching web; relating patches to the road gives a stable 62 km² of ribbon candidates | Next: compare the road frontage with the land behind it |
 
 ## Data in git
 
@@ -59,13 +73,10 @@ ignored until you add it there.
 | `raw/lulc/lulc_48Q-2023_fa4b43a451f3.tif` + `.json` | 04 | Same source, wider window: the 8 km band either side of QL18 (5 MB) |
 | `raw/osm/geofabrik_vietnam-261016.json`, `…/README` | 01 | Provenance of the Geofabrik extract. The `.gpkg` itself is downloaded by hand (see Quick start) |
 
-Older copies of the repo also have files in `data/raw/` that nothing reads any
-more. They are not committed: `landuse.tif` (pre-fetcher LULC clip),
-`lulc/lulc_48Q-2023_30be6675327e.*` (the old 9-province clip, replaced by the
-corridor clip),
-`gadm41_VNM_2.json` (districts, only for `LEVEL = 'DISTRICT'` in 01),
-`osm/highways_*.gpkg` and `osm/_http/` (Overpass cache, replaced by Geofabrik),
-`libpysal_mexico_*` and `ons_lad_*` (textbook practice data).
+Files from earlier phases that nothing reads any more (the pre-fetcher
+`landuse.tif`, the 9-province LULC clip, GADM districts, the Overpass cache,
+textbook practice data) were moved out of the repo to `~/data/desakota-legacy`
+on the author's machine on 2026-10-25. They were never committed.
 
 ## Setup details
 
@@ -148,10 +159,10 @@ Start here when you need to do something and don't know what to reach for.
 | **Raster data** | | | |
 | Read only the AOI from a remote COG | `rasterio` | `desakota.landcover.fetch_landcover`, `rasterio.windows.from_bounds` | declared |
 | Pixel counts / stats per polygon | `rasterstats` | `zonal_stats(..., categorical=True)` | declared |
-| Raster algebra with labelled axes | `rioxarray` / `xarray` | `rioxarray.open_rasterio(...).rio.clip_box` | declared |
+| Raster algebra with labelled axes | `rioxarray` / `xarray` | `rioxarray.open_rasterio(...).rio.clip_box` | add |
 | Raster → polygons | `rasterio` | `rasterio.features.shapes` | declared |
 | Polygons/lines → raster mask | `rasterio` | `rasterio.features.rasterize`, `geometry_mask` | declared |
-| Reproject or resample a raster | `rasterio` / `rioxarray` | `rasterio.warp.reproject`, `.rio.reproject` (`Resampling.nearest` for classes) | declared |
+| Reproject or resample a raster | `rasterio` | `rasterio.warp.reproject` (`Resampling.nearest` for classes) | declared |
 | Connected built-up clusters | `scipy` | `scipy.ndimage.label` | transitive |
 | Grow/shrink a mask by N pixels | `scipy` | `scipy.ndimage.binary_dilation` / `binary_erosion` | transitive |
 | Distance from every pixel to a road | `scipy` | `distance_transform_edt` on a rasterized road mask | transitive |
@@ -168,15 +179,15 @@ Start here when you need to do something and don't know what to reach for.
 | **Visualization** | | | |
 | Quick static map | `geopandas` → `matplotlib` | `.plot(column=..., legend=True)` | declared |
 | Interactive map | `geopandas` → `folium` | `.explore(column=...)` | declared |
-| Basemap tiles under a static map | `contextily` | `cx.add_basemap(ax, crs=layer.crs)` | declared |
+| Basemap tiles under a static map | `contextily` | `cx.add_basemap(ax, crs=layer.crs)` | add |
 | Moran scatterplot, LISA cluster map | `splot` | `splot.esda.moran_scatterplot`, `lisa_cluster` | declared |
 | Distributions and relationships (e.g. ribbons vs distance) | `seaborn` | `histplot`, `boxplot`, `regplot` | transitive |
-| Raster preview | `rasterio` / `xarray` | `rasterio.plot.show`, `DataArray.plot.imshow` | declared |
+| Raster preview | `rasterio` | `rasterio.plot.show` | declared |
 | Interactive map of 100k+ features | `lonboard` | `lonboard.viz(layer)` | add |
 | **Networks** | | | |
 | Routing, isochrones, network distance | `osmnx` graphs + `networkx` | `ox.graph_from_polygon` | deferred |
 | **Tooling** | | | |
-| Readable console tables and progress bars | `rich` | `rich.table.Table`, `rich.progress.track` | declared |
+| Readable console tables and progress bars | `rich` | `rich.table.Table`, `rich.progress.track` | add |
 | Format, lint, types, tests | `ruff`, `pyright`, `pytest` | see [Checks](#checks) | declared (dev) |
 
 Each choice above is a default, and these trade-offs explain the less obvious ones:
@@ -302,12 +313,6 @@ The data flow in the current notebooks: Geofabrik centrelines read by
 `rasterstats` reduces it to built-up fraction per corridor commune (01) →
 `libpysal` weights + `esda` Moran/LISA + `splot` plots on that table (02, a
 baseline). Ribbon detection, which replaces 02 as the method, comes next.
-
-**Declared but not yet imported:** `rioxarray` (an xarray-based alternative to
-the rasterio read, useful once ribbon detection needs raster algebra),
-`contextily` (basemap tiles under static plots), `rich` (console output). Keep them
-if the next phase uses them; otherwise drop them per "add dependencies when an
-analysis needs them" in `CLAUDE.md`.
 
 ## Highways (`desakota.highways`)
 

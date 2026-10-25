@@ -108,8 +108,7 @@ not just get a final figure. In notebooks:
   engine), `libpysal` (spatial weights), `esda` (Moran's I, LISA, Geary's C,
   Getis-Ord), `splot` (ESDA visualization), `mapclassify` (choropleth
   classification schemes — Jenks, quantiles, etc.)
-- Visualization: `matplotlib`, `folium` (interactive), `contextily` (basemap
-  tiles under static plots)
+- Visualization: `matplotlib`, `folium` (interactive)
 - Raster I/O: `rasterio` — windowed/clipped reads of the 10m LULC
   Cloud-Optimized GeoTIFFs (each STAC item is a full UTM-supercell mosaic,
   not an AOI-sized file, so a windowed read via `rasterio.windows.from_bounds`
@@ -132,7 +131,7 @@ not just get a final figure. In notebooks:
   Its boundaries come back as (lat, lng); `desakota.hexgrid` swaps them. Run
   `esda.Moran_Local` with `n_jobs=1`: parallel workers each copy the data and
   ran this 7 GB WSL out of memory at ~70k hexes (single-process takes ~10 s).
-- Also installed: `rioxarray` (brings `xarray`), `rasterstats`, `rich`.
+- Also installed: `rasterstats` (zonal stats per commune in 01).
 - dev: jupyterlab, ipykernel, pytest, ruff, pyright (strict), `pandas-stubs`,
   `types-shapely`. With the stubs, the remaining pyright noise is upstream
   `**kwargs` left untyped in geopandas/shapely signatures (`to_file`,
