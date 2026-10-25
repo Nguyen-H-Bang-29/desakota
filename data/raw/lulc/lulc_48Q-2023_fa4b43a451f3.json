@@ -1,0 +1,25 @@
+{
+  "fetched_at": "2026-10-18T11:25:21.663061+00:00",
+  "collection": "io-lulc-annual-v02",
+  "item_id": "48Q-2023",
+  "item_datetime": null,
+  "item_start_datetime": "2023-01-01T00:00:00+00:00",
+  "item_end_datetime": "2024-01-01T00:00:00+00:00",
+  "href": "https://ai4edataeuwest.blob.core.windows.net/io-lulc/io-annual-lulc-v02/48Q_20230101-20240101.tif",
+  "rasterio_version": "1.5.1",
+  "gdal_version": "3.12.4",
+  "crs": "EPSG:32648",
+  "buffer_m": 0.0,
+  "window": {
+    "col_off": 42258,
+    "row_off": 26457,
+    "width": 21440,
+    "height": 8035
+  },
+  "bounds": [
+    601490.0,
+    2312550.0,
+    815890.0,
+    2392900.0
+  ]
+}

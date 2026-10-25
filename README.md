@@ -39,6 +39,8 @@ committed notebook output, that is the reason.
 |---|---|---|
 | `01_preparation` | GADM communes, Geofabrik extract, 10 m LULC clip (searches Planetary Computer, so needs internet) | `communes_ql18_corridor.gpkg`: communes within 2 km of QL18 (the study area), with `dist_to_ql18_m`, `is_crossed_by_ql18`, `built_frac` |
 | `02_esda` | `communes_ql18_corridor.gpkg` | nothing. Moran's I / LISA per commune (Queen, island attached by KNN-1). **Superseded as a method**: on the whole delta it found city cores, not corridors |
+| `03_hexagons` | `communes_ql18_corridor.gpkg`, `highways_ql18.gpkg`, the cached LULC clip | `hexes_built_frac_h3r{8,9,10}.gpkg` (built_frac, dist_to_ql18_m per H3 cell over the 2 km band) and `hexes_lisa_built_frac_h3r9.gpkg` (plus LISA quadrant and pseudo p) |
+| `04_corridor_width` | `highways_ql18.gpkg`, GADM communes, a wider LULC clip (downloaded on first run) | nothing. LISA on H3 res 8 for bands of 2/3/5/8 km, and how much High-High area reaches the band edge |
 
 Ribbon detection, the next step, will read the corridor file. All files are in
 EPSG:32648 (UTM 48N).
@@ -54,6 +56,7 @@ ignored until you add it there.
 |---|---|---|
 | `raw/gadm41_VNM_3.json` | 01 | [GADM 4.1](https://gadm.org/download_country.html), Vietnam level 3 (communes), EPSG:4326 |
 | `raw/lulc/lulc_48Q-2023_3d7e0d2660ca.tif` + `.json` | 01 | `fetch_landcover` cache of Impact Observatory 10 m LULC 2023, clipped to the corridor |
+| `raw/lulc/lulc_48Q-2023_fa4b43a451f3.tif` + `.json` | 04 | Same source, wider window: the 8 km band either side of QL18 (5 MB) |
 | `raw/osm/geofabrik_vietnam-261016.json`, `…/README` | 01 | Provenance of the Geofabrik extract. The `.gpkg` itself is downloaded by hand (see Quick start) |
 
 Older copies of the repo also have files in `data/raw/` that nothing reads any

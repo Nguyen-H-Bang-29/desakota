@@ -35,6 +35,9 @@ data/raw/*
 data/raw/lulc/*
 !data/raw/lulc/lulc_48Q-2023_3d7e0d2660ca.tif
 !data/raw/lulc/lulc_48Q-2023_3d7e0d2660ca.json
+# 04: wider clip covering the 8 km band either side of QL18
+!data/raw/lulc/lulc_48Q-2023_fa4b43a451f3.tif
+!data/raw/lulc/lulc_48Q-2023_fa4b43a451f3.json
 # 01: Geofabrik extract. The 1.4 GB .gpkg is downloaded by hand (README Quick
 # start); only its provenance is tracked.
 !data/raw/osm/

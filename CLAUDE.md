@@ -8,9 +8,24 @@ River Delta. Hypothesis: building along national highways produces McGee-style
 
 - **Pipeline:** `01_preparation` (GADM communes + Geofabrik roads → QL18
   corridor, then 10 m LULC clipped to it → `processed/communes_ql18_corridor.gpkg`,
-  the study area with `built_frac`) → `02_esda` (commune Moran's I / LISA on the
-  corridor; superseded as a method, kept as a baseline). Ribbon detection comes
-  next. `03_highways` was folded into 01 on 2026-10-17.
+  the study area with `built_frac`, plus `processed/highways_ql18.gpkg`) →
+  `02_esda` (commune Moran's I / LISA on the corridor; superseded as a method,
+  kept as a baseline) → `03_hexagons` (H3 res 8/9/10 over the 2 km band, on land;
+  `built_frac` per hex, distance decay, Moran's I / LISA →
+  `processed/hexes_*_h3r{8,9,10}.gpkg`). Nothing is masked yet (road surface and
+  urban wards are in, by decision 2026-10-18) → `04_corridor_width` (H3 res 8,
+  2/3/5/8 km bands; patches = LISA High-High or `built_frac >= 0.5`, shape from
+  `desakota.patches`: alpha shape + equivalent rectangle). Threshold patches
+  reaching the band edge fall 97% → 54% of area from 2 to 8 km and haven't
+  converged: the Bắc Ninh–Đông Triều built fabric is wider than 16 km. The
+  equivalent rectangle scores *branching* patches as very elongated (up to 17),
+  so elongation alone can't tell one ribbon from a web of strips. Relating patches
+  to the road (`add_road_measures`: QL18 length lined, share of area within 1 km)
+  does: ribbon-candidate area settles at 62 km² from a 5 km band on (it was
+  298 km² at 2 km, where truncated webs looked like ribbons); most delta patches
+  line long stretches of QL18 but lie mostly further away (road-touching webs).
+  Ribbon detection comes next.
+  `03_highways` was folded into 01 on 2026-10-17.
 - **Setup and data download:** README "Quick start". Only one input is not in
   git: the 1.4 GB Geofabrik extract.
 - **Checks before calling work done:** `uv run ruff format .` ·
@@ -113,6 +128,10 @@ not just get a final figure. In notebooks:
   `load_highways`; `fetch_highways` only works against a private Overpass.
   Overpass speaks WGS 84 lon/lat only; `desakota.highways` handles the
   reprojection in and out.
+- Hexagons: `h3` (h3-py 4.x, untyped: wrap calls with a narrow pyright ignore).
+  Its boundaries come back as (lat, lng); `desakota.hexgrid` swaps them. Run
+  `esda.Moran_Local` with `n_jobs=1`: parallel workers each copy the data and
+  ran this 7 GB WSL out of memory at ~70k hexes (single-process takes ~10 s).
 - Also installed: `rioxarray` (brings `xarray`), `rasterstats`, `rich`.
 - dev: jupyterlab, ipykernel, pytest, ruff, pyright (strict), `pandas-stubs`,
   `types-shapely`. With the stubs, the remaining pyright noise is upstream
