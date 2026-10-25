@@ -20,7 +20,7 @@ Needs Linux or WSL (Ubuntu 24.04), `git`, `curl`, `unzip` and
 ```bash
 git clone https://github.com/Nguyen-H-Bang-29/desakota.git ~/projects/desakota && cd ~/projects/desakota
 uv sync                  # installs Python 3.14 and every dependency into .venv
-uv run pytest            # 131 tests, offline, about 90 s on /mnt/c
+uv run pytest            # offline, no network calls
 
 # The one input not in git: the Geofabrik OSM extract for Vietnam (1.4 GB unzipped)
 curl -L -o /tmp/vietnam-free.gpkg.zip \
@@ -50,23 +50,14 @@ All files are in EPSG:32648 (UTM 48N).
 
 ## Attempts so far
 
-This is a learning project, so the superseded notebooks stay in, in the order
-they were tried. Each records what it found and why the next one followed. Read
-them as a sequence of attempts, not as one pipeline.
+Notebooks 02–05 are successive approaches to the question, in the order tried.
 
-| # | Notebook | Unit and method | What it showed | Why the next attempt |
+| # | Notebook | Unit and method | Result | Limitation |
 |---|---|---|---|---|
-| 1 | `02_esda` | Communes (~2.4 km); Moran's I / LISA on `built_frac` | Strong clustering (I = 0.75 on the delta), but High-High = city cores | A ribbon a few hundred metres wide disappears inside a commune |
-| 2 | `03_hexagons` | H3 res 8/9/10 over the 2 km band; distance decay, LISA | Built share falls steadily with distance from QL18; LISA still finds towns, and most High-High area reaches the band edge | A patch cut off by the band edge looks elongated along the road, exactly like a ribbon |
-| 3 | `04_corridor_width` | H3 res 8, bands of 2–8 km; patches with alpha-shape elongation and road measures | Patches don't stop at 8 km (the Bắc Ninh–Đông Triều fabric is wider than 16 km); elongation can't separate a ribbon from a branching web; relating patches to the road gives a stable 62 km² of ribbon candidates | Patch-and-shape methods ask "what shape is the built-up area", not "is the roadside built while the land behind is not", which is what a ribbon is |
-| 4 | `05_frontage` | Per 100 m of QL18 and per side: built share of the frontage (30–100 m) vs the land behind (500–1500 m) | 164 km of ribbon in 197 runs, 55% of non-town frontage (2023, uncalibrated). But the frontage is saturated (median 1.0), so the background decides, and the left/north side dominates where QL18 hugs forested hills | Check on imagery; split the background into crops vs forest (a linear town against hills is not a farmland ribbon); add 2017 for the trend |
-
-**Why frontage vs background.** A distance-decay curve can't tell a ribbon from a
-town centred on the road: both are dense near the road. The contrast can.
-Frontage high and background low is a ribbon. Both high is a town or continuous
-fabric. Frontage low is open road. That gives *where* (stretches of QL18 by
-chainage) and *how much* (km of frontage ribboned), with no shape threshold.
-
+| 1 | `02_esda` | Communes (~2.4 km); Moran's I / LISA on `built_frac` | I = 0.75 on the delta; High-High = city cores | A ribbon a few hundred metres wide is lost inside a commune |
+| 2 | `03_hexagons` | H3 res 8/9/10 over the 2 km band; distance decay, LISA | Built share falls with distance from QL18; most High-High area reaches the band edge | A patch cut off by the band edge looks elongated along the road |
+| 3 | `04_corridor_width` | H3 res 8, bands of 2–8 km; patches with alpha-shape elongation and road measures | Patches still reach the edge at 8 km; ribbon-candidate area settles at 62 km² from 5 km | Elongation can't separate a ribbon from a branching web |
+| 4 | `05_frontage` | Per 100 m of QL18 and per side: built share of the frontage (30–100 m) vs the land behind (500–1500 m) | 164 km of ribbon in 197 runs, 55% of non-built-up frontage (2023) | Frontage saturated (median 1.0), so the background decides; thresholds uncalibrated |
 
 ## Data in git
 
@@ -81,11 +72,6 @@ ignored until you add it there.
 | `raw/lulc/lulc_48Q-2023_3d7e0d2660ca.tif` + `.json` | 01 | `fetch_landcover` cache of Impact Observatory 10 m LULC 2023, clipped to the corridor |
 | `raw/lulc/lulc_48Q-2023_fa4b43a451f3.tif` + `.json` | 04 | Same source, wider window: the 8 km band either side of QL18 (5 MB) |
 | `raw/osm/geofabrik_vietnam-261016.json`, `…/README` | 01 | Provenance of the Geofabrik extract. The `.gpkg` itself is downloaded by hand (see Quick start) |
-
-Files from earlier phases that nothing reads any more (the pre-fetcher
-`landuse.tif`, the 9-province LULC clip, GADM districts, the Overpass cache,
-textbook practice data) were moved out of the repo to `~/data/desakota-legacy`
-on the author's machine on 2026-10-25. They were never committed.
 
 ## Setup details
 

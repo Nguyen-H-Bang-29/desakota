@@ -24,15 +24,12 @@ River Delta. Hypothesis: building along national highways produces McGee-style
   does: ribbon-candidate area settles at 62 km² from a 5 km band on (it was
   298 km² at 2 km, where truncated webs looked like ribbons); most delta patches
   line long stretches of QL18 but lie mostly further away (road-touching webs).
-  → `05_frontage` (attempt 4: per 100 m station of QL18 and side, built share
-  of the frontage 30–100 m vs the background 500–1500 m; ribbon = frontage high,
-  background low; `desakota.frontage` gives the chainage axis and road pieces,
-  `landcover.compute_frontage_counts` the pixel counts →
-  `processed/frontage_built_frac_station100m.gpkg`). Thresholds are uncalibrated
-  until checked on imagery.
-- **Notebooks 02–05 are successive attempts**, kept on purpose (learning
-  project). Don't delete or rewrite a superseded one; record what it showed in
-  README "Attempts so far" and start the next number.
+  → `05_frontage` (per 100 m station of QL18 and side: built share of the
+  frontage 30–100 m vs the background 500–1500 m; `desakota.frontage`,
+  `landcover.compute_frontage_counts` →
+  `processed/frontage_built_frac_station100m.gpkg`).
+- **Notebooks 02–05 are successive approaches.** Keep superseded ones; a new
+  approach gets the next number and a row in README "Attempts so far".
   `03_highways` was folded into 01 on 2026-10-17.
 - **Setup and data download:** README "Quick start". Only one input is not in
   git: the 1.4 GB Geofabrik extract.
@@ -139,8 +136,7 @@ not just get a final figure. In notebooks:
   Its boundaries come back as (lat, lng); `desakota.hexgrid` swaps them. Run
   `esda.Moran_Local` with `n_jobs=1`: parallel workers each copy the data and
   ran this 7 GB WSL out of memory at ~70k hexes (single-process takes ~10 s).
-- Also installed: `rasterstats` (zonal stats per commune in 01), `networkx`
-  (the QL18 reference line for chainage in 05).
+- Also installed: `rasterstats`, `networkx` (chainage axis in `desakota.frontage`).
 - dev: jupyterlab, ipykernel, pytest, ruff, pyright (strict), `pandas-stubs`,
   `types-shapely`. With the stubs, the remaining pyright noise is upstream
   `**kwargs` left untyped in geopandas/shapely signatures (`to_file`,

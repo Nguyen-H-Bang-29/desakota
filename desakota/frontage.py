@@ -62,8 +62,7 @@ def build_reference_line(
     The penalty is a trade-off. A jump of length g still wins over mapped road of
     length L between the same two points whenever g x penalty < L, so a road that
     loops back near itself (a U-turn, a detour through a town) can be skipped. With
-    `gap_penalty` = 1 the path cuts every corner it can; on QL18 a penalty of 5 kept
-    278 km of mapped road with 4 km of jumps. Check the result on a map.
+    `gap_penalty` = 1 the path cuts every corner it can.
 
     Args:
         road: Road centrelines (LineString or MultiLineString) in a projected CRS.
