@@ -20,7 +20,7 @@ Needs Linux or WSL (Ubuntu 24.04), `git`, `curl`, `unzip` and
 ```bash
 git clone https://github.com/Nguyen-H-Bang-29/desakota.git ~/projects/desakota && cd ~/projects/desakota
 uv sync                  # installs Python 3.14 and every dependency into .venv
-uv run pytest            # 91 tests, offline, about 30 s
+uv run pytest            # 131 tests, offline, about 90 s on /mnt/c
 
 # The one input not in git: the Geofabrik OSM extract for Vietnam (1.4 GB unzipped)
 curl -L -o /tmp/vietnam-free.gpkg.zip \
@@ -44,6 +44,7 @@ committed notebook output, that is the reason.
 | `02_esda` | `communes_ql18_corridor.gpkg` | nothing. Moran's I / LISA per commune (Queen, island attached by KNN-1). **Superseded as a method**: on the whole delta it found city cores, not corridors |
 | `03_hexagons` | `communes_ql18_corridor.gpkg`, `highways_ql18.gpkg`, the cached LULC clip | `hexes_built_frac_h3r{8,9,10}.gpkg` (built_frac, dist_to_ql18_m per H3 cell over the 2 km band) and `hexes_lisa_built_frac_h3r9.gpkg` (plus LISA quadrant and pseudo p) |
 | `04_corridor_width` | `highways_ql18.gpkg`, GADM communes, a wider LULC clip (downloaded on first run) | nothing. LISA on H3 res 8 for bands of 2/3/5/8 km, and how much High-High area reaches the band edge |
+| `05_frontage` | `highways_ql18.gpkg`, the wider LULC clip from 04 | `frontage_built_frac_station100m.gpkg`: built share of the road frontage vs the land behind it, per 100 m of QL18 and side |
 
 All files are in EPSG:32648 (UTM 48N).
 
@@ -57,7 +58,15 @@ them as a sequence of attempts, not as one pipeline.
 |---|---|---|---|---|
 | 1 | `02_esda` | Communes (~2.4 km); Moran's I / LISA on `built_frac` | Strong clustering (I = 0.75 on the delta), but High-High = city cores | A ribbon a few hundred metres wide disappears inside a commune |
 | 2 | `03_hexagons` | H3 res 8/9/10 over the 2 km band; distance decay, LISA | Built share falls steadily with distance from QL18; LISA still finds towns, and most High-High area reaches the band edge | A patch cut off by the band edge looks elongated along the road, exactly like a ribbon |
-| 3 | `04_corridor_width` | H3 res 8, bands of 2–8 km; patches with alpha-shape elongation and road measures | Patches don't stop at 8 km (the Bắc Ninh–Đông Triều fabric is wider than 16 km); elongation can't separate a ribbon from a branching web; relating patches to the road gives a stable 62 km² of ribbon candidates | Next: compare the road frontage with the land behind it |
+| 3 | `04_corridor_width` | H3 res 8, bands of 2–8 km; patches with alpha-shape elongation and road measures | Patches don't stop at 8 km (the Bắc Ninh–Đông Triều fabric is wider than 16 km); elongation can't separate a ribbon from a branching web; relating patches to the road gives a stable 62 km² of ribbon candidates | Patch-and-shape methods ask "what shape is the built-up area", not "is the roadside built while the land behind is not", which is what a ribbon is |
+| 4 | `05_frontage` | Per 100 m of QL18 and per side: built share of the frontage (30–100 m) vs the land behind (500–1500 m) | 164 km of ribbon in 197 runs, 55% of non-town frontage (2023, uncalibrated). But the frontage is saturated (median 1.0), so the background decides, and the left/north side dominates where QL18 hugs forested hills | Check on imagery; split the background into crops vs forest (a linear town against hills is not a farmland ribbon); add 2017 for the trend |
+
+**Why frontage vs background.** A distance-decay curve can't tell a ribbon from a
+town centred on the road: both are dense near the road. The contrast can.
+Frontage high and background low is a ribbon. Both high is a town or continuous
+fabric. Frontage low is open road. That gives *where* (stretches of QL18 by
+chainage) and *how much* (km of frontage ribboned), with no shape threshold.
+
 
 ## Data in git
 
@@ -312,7 +321,11 @@ The data flow in the current notebooks: Geofabrik centrelines read by
 `stac` finds the LULC item → `rasterio` clips its window to `raw/lulc/` →
 `rasterstats` reduces it to built-up fraction per corridor commune (01) →
 `libpysal` weights + `esda` Moran/LISA + `splot` plots on that table (02, a
-baseline). Ribbon detection, which replaces 02 as the method, comes next.
+baseline). 03 and 04 swap communes for `h3` hexagons (`desakota.hexgrid`), counted
+in one rasterize pass, and group cells into patches (`desakota.patches`). 05 builds a
+chainage axis with `networkx` (`desakota.frontage`) and assigns each pixel to its
+nearest road piece with a shapely `STRtree`, giving built share per 100 m of road,
+per side and per distance band.
 
 ## Highways (`desakota.highways`)
 
