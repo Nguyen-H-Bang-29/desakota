@@ -9,7 +9,12 @@ import pytest
 from shapely.geometry import LineString, MultiLineString, Polygon, box
 
 from desakota.crs import CRS_UTM
-from desakota.patches import add_road_measures, compute_elongation, detect_patches
+from desakota.patches import (
+    add_road_measures,
+    compute_elongation,
+    compute_rotated_rectangle_elongation,
+    detect_patches,
+)
 
 EDGE_M = 531.4  # H3 res 8 hexagon edge
 SPACING_M = EDGE_M * math.sqrt(3)  # centre-to-centre distance of neighbouring hexagons
@@ -69,6 +74,38 @@ def test_elongation_keeps_the_index() -> None:
     outlines = gpd.GeoSeries([box(0, 0, 2, 1)], index=[7], crs=CRS_UTM)
 
     assert compute_elongation(outlines).index.tolist() == [7]
+
+
+# --- compute_rotated_rectangle_elongation ------------------------------------
+
+
+def test_rotated_rectangle_elongation_of_an_axis_aligned_rectangle_is_its_aspect_ratio() -> None:
+    geometries = gpd.GeoSeries([box(0, 0, 4_000, 1_000), box(0, 0, 1_000, 1_000)], crs=CRS_UTM)
+
+    assert compute_rotated_rectangle_elongation(geometries).tolist() == pytest.approx([4.0, 1.0])
+
+
+def test_rotated_rectangle_elongation_underreads_a_curved_strip() -> None:
+    # The alpha-outline/equivalent-rectangle elongation reads this ribbon as > 8
+    # (see `test_curved_strip_scores_by_its_length_not_its_bounding_box` below);
+    # the minimum rotated rectangle around the same quarter-circle sees only its
+    # chord, so it reports a much smaller number. That gap is why the two
+    # measures live side by side in notebook 04.
+    patches = _detect(_cells(_arc(12)))
+
+    rotated = compute_rotated_rectangle_elongation(patches.geometry).iloc[0]
+    alpha = patches['elongation'].iloc[0]
+
+    assert rotated < 0.75 * alpha
+
+
+def test_rotated_rectangle_elongation_is_renamed_and_keeps_the_index() -> None:
+    geometries = gpd.GeoSeries([box(0, 0, 2, 1)], index=[7], crs=CRS_UTM)
+
+    out = compute_rotated_rectangle_elongation(geometries)
+
+    assert out.index.tolist() == [7]
+    assert out.name == 'elongation_rotated_rect'
 
 
 # --- detect_patches ----------------------------------------------------------
