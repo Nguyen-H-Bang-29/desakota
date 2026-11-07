@@ -15,7 +15,9 @@ statistics (ESDA) on that. `CLAUDE.md` has the scope and the conventions.
 ## Quick start
 
 Needs Linux or WSL (Ubuntu 24.04), `git`, `curl`, `unzip` and
-[uv](https://docs.astral.sh/uv/getting-started/installation/).
+[uv](https://docs.astral.sh/uv/getting-started/installation/). If you prefer
+not to install the Python toolchain on the host — or you're on Windows
+without WSL — skip ahead to [Docker](#docker).
 
 ```bash
 git clone https://github.com/Nguyen-H-Bang-29/desakota.git ~/projects/desakota && cd ~/projects/desakota

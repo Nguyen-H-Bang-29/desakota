@@ -142,10 +142,18 @@ not just get a final figure. In notebooks:
   `**kwargs` left untyped in geopandas/shapely signatures (`to_file`,
   `read_file`, `set_precision`). Suppress those with a narrow
   `# pyright: ignore[reportUnknownMemberType] -- <reason>`, never file-wide.
+- Container: `Dockerfile` + `docker-compose.yml` stand up a reproducible dev
+  stack — `python:3.14-slim-bookworm` with the GDAL/GEOS/PROJ apt stack, uv
+  from `ghcr.io/astral-sh/uv`, and PostGIS 16-3.5 bound to `127.0.0.1:5432`.
+  Scaffolding for the eventual FastAPI/Postgres phase; today the host `uv
+  sync` workflow remains the default. See README "Docker" for the four
+  commands (postgres, jupyter, pytest, shell).
 
-**Runs in WSL (Ubuntu 24.04) or Linux.** `uv` is in `~/.local/bin`, which may
-not be on `PATH` (prefix commands with `export PATH="$HOME/.local/bin:$PATH"`).
-Never create or run the `.venv` from Windows; the layouts are incompatible.
+**Host dev runs in WSL (Ubuntu 24.04) or Linux; the Docker stack is
+OS-agnostic.** On the host, `uv` is in `~/.local/bin`, which may not be on
+`PATH` (prefix commands with `export PATH="$HOME/.local/bin:$PATH"`). Never
+create or run the host `.venv` from Windows; the layouts are incompatible —
+use the Docker path on Windows if you don't have WSL.
 
 If the checkout is under `/mnt/c`, installs are slow but not hung: uv can't
 hardlink from its ext4 cache across 9P, so it copies every file (measured:
