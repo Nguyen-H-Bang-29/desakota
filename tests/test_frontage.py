@@ -11,7 +11,7 @@ import rasterio
 from shapely.geometry import LineString, MultiLineString
 
 from desakota.crs import CRS_UTM
-from desakota.frontage import build_reference_line, build_road_pieces
+from desakota.frontage import build_reference_line, build_road_pieces, detect_ribbon_runs
 from desakota.landcover import compute_frontage_counts
 
 LEGEND = {1: 'Water', 2: 'Trees', 7: 'Built area'}
@@ -198,3 +198,91 @@ def test_frontage_counts_reject_bad_edges(ribbon_tif: Path) -> None:
             'Water',
             depth_edges_m=(0, 100, 50),
         )
+
+
+# --- detect_ribbon_runs ------------------------------------------------------
+
+
+def _station_class(left: list[str], right: list[str] | None = None) -> pd.Series:
+    """Build a MultiIndex Series of station classes for both sides."""
+    right = right if right is not None else ['open'] * len(left)
+    stations = max(len(left), len(right))
+    index = pd.MultiIndex.from_product(
+        [range(stations), ['left', 'right']], names=['station_id', 'side']
+    )
+    values = [
+        left[i] if side == 'left' else right[i]
+        for i in range(stations)
+        for side in ('left', 'right')
+    ]
+    return pd.Series(values, index=index, name='frontage_class')
+
+
+def test_ribbon_runs_merge_consecutive_stations_per_side() -> None:
+    # left: a 3-station run of ribbon (300 m) then opens; right: nothing.
+    station_class = _station_class(
+        left=['ribbon', 'ribbon', 'ribbon', 'open', 'open'],
+        right=['open', 'open', 'open', 'open', 'open'],
+    )
+
+    runs = detect_ribbon_runs(station_class, station_m=100.0, min_length_m=200.0)
+
+    assert list(runs.columns) == ['side', 'first_station', 'n_stations', 'length_m', 'start_km']
+    assert len(runs) == 1
+    row = runs.iloc[0]
+    assert row['side'] == 'left'
+    assert row['first_station'] == 0
+    assert row['n_stations'] == 3
+    assert row['length_m'] == 300.0
+    assert row['start_km'] == 0.0
+
+
+def test_ribbon_runs_drop_runs_shorter_than_the_minimum_length() -> None:
+    # Two left-side runs: one of 200 m (passes) and one of 100 m (dropped).
+    station_class = _station_class(
+        left=['ribbon', 'ribbon', 'open', 'ribbon', 'open'],
+    )
+
+    runs = detect_ribbon_runs(station_class, station_m=100.0, min_length_m=200.0)
+
+    assert len(runs) == 1
+    assert runs['n_stations'].iloc[0] == 2
+
+
+def test_ribbon_runs_find_separate_runs_on_both_sides() -> None:
+    station_class = _station_class(
+        left=['ribbon', 'ribbon', 'ribbon', 'open'],
+        right=['open', 'ribbon', 'ribbon', 'ribbon'],
+    )
+
+    runs = detect_ribbon_runs(station_class, station_m=100.0, min_length_m=200.0)
+
+    assert sorted(runs['side'].tolist()) == ['left', 'right']
+    assert runs.loc[runs['side'] == 'left', 'first_station'].iloc[0] == 0
+    assert runs.loc[runs['side'] == 'right', 'first_station'].iloc[0] == 1
+
+
+def test_ribbon_runs_return_an_empty_frame_when_nothing_qualifies() -> None:
+    station_class = _station_class(left=['open', 'open', 'open'])
+
+    runs = detect_ribbon_runs(station_class, station_m=100.0, min_length_m=200.0)
+
+    assert len(runs) == 0
+    assert list(runs.columns) == ['side', 'first_station', 'n_stations', 'length_m', 'start_km']
+
+
+def test_ribbon_runs_reject_missing_index_levels() -> None:
+    bad = pd.Series(['ribbon', 'open'], index=[0, 1])
+
+    with pytest.raises(ValueError, match='MultiIndex'):
+        detect_ribbon_runs(bad, station_m=100.0, min_length_m=200.0)
+
+
+def test_ribbon_runs_use_the_configurable_label() -> None:
+    # Any label can act as the "ribbon" class, e.g. 'HH' from a LISA.
+    station_class = _station_class(left=['HH', 'HH', 'HH', 'other'])
+
+    runs = detect_ribbon_runs(station_class, ribbon_label='HH', station_m=100.0, min_length_m=200.0)
+
+    assert len(runs) == 1
+    assert runs['length_m'].iloc[0] == 300.0

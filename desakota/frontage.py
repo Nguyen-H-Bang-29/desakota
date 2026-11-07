@@ -31,12 +31,15 @@ from typing import Any, Final, cast
 import geopandas as gpd
 import networkx as nx
 import numpy as np
+import pandas as pd
 import shapely
 from numpy.typing import NDArray
 from shapely.geometry import LineString
 from shapely.geometry.base import BaseGeometry
 
 ROAD_PIECE_COLUMNS: Final = ['piece_id', 'chainage_m', 'station_id', 'direction_sign', 'geometry']
+
+RIBBON_RUN_COLUMNS: Final = ['side', 'first_station', 'n_stations', 'length_m', 'start_km']
 
 _NODE_DECIMALS: Final = 1
 """Endpoints are matched after rounding to 0.1 m, which absorbs float noise from noding."""
@@ -161,6 +164,55 @@ def build_road_pieces(
         },
         geometry=shapely.linestrings(np.stack([starts, ends], axis=1)),
     )[ROAD_PIECE_COLUMNS]
+
+
+def detect_ribbon_runs(
+    station_class: pd.Series,
+    *,
+    ribbon_label: str = 'ribbon',
+    station_m: float,
+    min_length_m: float,
+) -> pd.DataFrame:
+    """Find runs of consecutive ribbon-classed stations per side.
+
+    A run is a maximal block of stations on the same side whose class equals
+    `ribbon_label`. Following Verbeek, Boussauw & Pisman (2014), a ribbon is at
+    least a given length long; shorter runs are dropped.
+
+    Args:
+        station_class: Per-station class, indexed by a MultiIndex with levels
+            `station_id` (integer, dense per side) and `side` (string). This is
+            the long-form classification produced in notebook 05.
+        ribbon_label: Class value that counts as a ribbon station.
+        station_m: Length of a station in metres; the station's run contributes
+            `station_m` to the ribbon's length.
+        min_length_m: Runs shorter than this are dropped.
+
+    Returns:
+        One row per surviving run, columns `side`, `first_station`,
+        `n_stations`, `length_m` and `start_km`. Empty with these columns when
+        nothing qualifies.
+
+    Raises:
+        ValueError: If `station_class` is not indexed by `(station_id, side)`.
+    """
+    if list(station_class.index.names) != ['station_id', 'side']:
+        raise ValueError(
+            "station_class must have MultiIndex levels ['station_id', 'side']; "
+            f'got {list(station_class.index.names)}'
+        )
+    runs: list[dict[str, Any]] = []
+    for side, classes in station_class.groupby(level='side'):
+        is_ribbon = classes.droplevel('side').sort_index() == ribbon_label
+        run_id = (is_ribbon != is_ribbon.shift()).cumsum()
+        for _, run in is_ribbon[is_ribbon].groupby(run_id[is_ribbon]):
+            runs.append(
+                {'side': side, 'first_station': int(run.index.min()), 'n_stations': len(run)}
+            )
+    ribbons = pd.DataFrame(runs, columns=['side', 'first_station', 'n_stations'])
+    ribbons['length_m'] = ribbons['n_stations'] * station_m
+    ribbons['start_km'] = ribbons['first_station'] * station_m / 1000
+    return ribbons[ribbons['length_m'] >= min_length_m].reset_index(drop=True)[RIBBON_RUN_COLUMNS]
 
 
 def _locate_on(line: LineString, xy: NDArray[np.float64]) -> NDArray[np.float64]:
