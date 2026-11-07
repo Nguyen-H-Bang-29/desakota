@@ -20,7 +20,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
@@ -77,6 +77,40 @@ def get_landcover_legend(
     """
     file_values = collection.item_assets[ASSET_KEY].properties['file:values']
     return {entry['values'][0]: entry['summary'] for entry in file_values}
+
+
+def get_landcover_item_for_tile(
+    items: Iterable[pystac.Item], tile_id_prefix: str = '48Q'
+) -> pystac.Item:
+    """Return the single search result whose id starts with a given UTM-tile prefix.
+
+    The corridor sits inside io-lulc's `48Q` supercell: a STAC search by bbox
+    may still return neighbouring tiles when the AOI's bounds brush them, so
+    the notebooks pick the `48Q` item explicitly rather than taking `items[0]`.
+
+    Args:
+        items: Candidate STAC items (e.g. from `search_items(...).items()`).
+        tile_id_prefix: UTM tile id the wanted item's id starts with. The
+            default `'48Q'` is the QL18 corridor's tile; this is deliberately
+            not a coverage-based picker — a wider AOI needs its own choice.
+
+    Returns:
+        The matching item.
+
+    Raises:
+        ValueError: If no item starts with the prefix, or more than one does
+            (the collection is one item per tile per year; two is a sign the
+            search returned duplicates and the caller should look at them).
+    """
+    matches = [item for item in items if item.id.startswith(tile_id_prefix)]
+    if not matches:
+        raise ValueError(f'no STAC item with id starting with {tile_id_prefix!r}')
+    if len(matches) > 1:
+        raise ValueError(
+            f'{len(matches)} STAC items start with {tile_id_prefix!r}: '
+            f'{[item.id for item in matches]}'
+        )
+    return matches[0]
 
 
 def fetch_landcover(

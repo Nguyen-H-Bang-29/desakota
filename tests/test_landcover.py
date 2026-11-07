@@ -18,6 +18,7 @@ from desakota.landcover import (
     compute_built_frac,
     compute_built_frac_for_tessellation,
     fetch_landcover,
+    get_landcover_item_for_tile,
 )
 
 LEGEND = {1: 'Water', 2: 'Trees', 7: 'Built area'}
@@ -72,6 +73,55 @@ def _aoi(
     minx: float, miny: float, maxx: float, maxy: float, crs: str = CRS_UTM
 ) -> gpd.GeoDataFrame:
     return gpd.GeoDataFrame(geometry=[box(minx, miny, maxx, maxy)], crs=crs)
+
+
+def _bare_item(item_id: str) -> pystac.Item:
+    """A STAC item identified only by its id; good enough for the tile picker."""
+    return pystac.Item(
+        id=item_id,
+        geometry=None,
+        bbox=None,
+        datetime=datetime(2023, 1, 1, tzinfo=UTC),
+        properties={},
+    )
+
+
+# --- get_landcover_item_for_tile ---------------------------------------------
+
+
+def test_tile_picker_returns_the_item_starting_with_the_prefix() -> None:
+    items = [_bare_item('47Q-2023'), _bare_item('48Q-2023'), _bare_item('49Q-2023')]
+
+    assert get_landcover_item_for_tile(items).id == '48Q-2023'
+
+
+def test_tile_picker_defaults_to_the_corridor_tile() -> None:
+    # The default prefix must stay '48Q' until the AOI generalisation phase.
+    items = [_bare_item('47Q-2023'), _bare_item('48Q-2023')]
+
+    assert (
+        get_landcover_item_for_tile(items).id
+        == get_landcover_item_for_tile(items, tile_id_prefix='48Q').id
+    )
+
+
+def test_tile_picker_rejects_an_empty_search() -> None:
+    with pytest.raises(ValueError, match='no STAC item'):
+        get_landcover_item_for_tile([_bare_item('47Q-2023')], tile_id_prefix='48Q')
+
+
+def test_tile_picker_rejects_ambiguous_matches() -> None:
+    items = [_bare_item('48Q-2022'), _bare_item('48Q-2023')]
+
+    with pytest.raises(ValueError, match='start with'):
+        get_landcover_item_for_tile(items, tile_id_prefix='48Q')
+
+
+def test_tile_picker_accepts_a_generator_not_only_a_list() -> None:
+    # The notebooks pass `search_items(...).items()`, which is a generator.
+    items = iter([_bare_item('47Q-2023'), _bare_item('48Q-2023')])
+
+    assert get_landcover_item_for_tile(items).id == '48Q-2023'
 
 
 # --- fetch_landcover ---------------------------------------------------------
