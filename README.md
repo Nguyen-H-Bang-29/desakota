@@ -349,8 +349,8 @@ The data flow in the current notebooks: Geofabrik centrelines read by
 `rasterstats` reduces it to built-up fraction per corridor commune (01) →
 `libpysal` weights + `esda` Moran/LISA + `splot` plots on that table (02, a
 baseline). 03 and 04 swap communes for `h3` hexagons (`desakota.hexgrid`), counted
-in one rasterize pass, and group cells into patches (`desakota.patches`). 05 builds a
-chainage axis with `networkx` (`desakota.frontage`) and assigns each pixel to its
+in one rasterize pass, and group cells into patches (`desakota.lab.patches`). 05 builds a
+chainage axis with `networkx` (`desakota.lab.frontage`) and assigns each pixel to its
 nearest road piece with a shapely `STRtree`, giving built share per 100 m of road,
 per side and per distance band.
 

@@ -136,7 +136,7 @@ not just get a final figure. In notebooks:
   Its boundaries come back as (lat, lng); `desakota.hexgrid` swaps them. Run
   `esda.Moran_Local` with `n_jobs=1`: parallel workers each copy the data and
   ran this 7 GB WSL out of memory at ~70k hexes (single-process takes ~10 s).
-- Also installed: `rasterstats`, `networkx` (chainage axis in `desakota.frontage`).
+- Also installed: `rasterstats`, `networkx` (chainage axis in `desakota.lab.frontage`).
 - dev: jupyterlab, ipykernel, pytest, ruff, pyright (strict), `pandas-stubs`,
   `types-shapely`. With the stubs, the remaining pyright noise is upstream
   `**kwargs` left untyped in geopandas/shapely signatures (`to_file`,
