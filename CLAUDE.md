@@ -158,6 +158,15 @@ ext4 (sync in about 3 s); don't replace it with a real directory. Nothing loads
 
 - **Notebooks are exploratory.** Once a transform is worth keeping, move it
   into `desakota/` so ruff, pyright, and pytest see it, then import it back.
+- **Promoted vs. lab.** Code under `desakota/` is *promoted* — stack-ready,
+  the surface a FastAPI/Postgres build will consume. Code under
+  `desakota/lab/` is *staging* — hypothesis-shaped (tied to a specific
+  attempt), reusable across notebooks but not yet blessed for the stack.
+  **Promoted code must not import from `desakota.lab`**; lab may import from
+  promoted. Graduating a module from lab to promoted is a `git mv` plus a
+  note here. The verb catalog in "Naming conventions" has no "pick one of
+  many" entry; `get_` has been used (`get_landcover_item_for_tile`) matching
+  `get_landcover_legend`'s shape.
 - **Notebooks are numbered** in the order they are meant to be read.
 - **Never hardcode paths.** Use `DataLayout.from_env()`; the root is
   overridable via `DESAKOTA_DATA_DIR`.
