@@ -101,6 +101,45 @@ and won't work in WSL.
 extensions (Ruff, Python). Pylance is turned off on purpose. Type checking is
 `uv run pyright` in strict mode, see [Checks](#checks).
 
+## Docker
+
+A Docker Compose setup is provided for a reproducible Jupyter + PostGIS
+environment. Scaffolding for a later FastAPI + Postgres phase, but today it
+just stands up Python 3.14 with GDAL/GEOS/PROJ pre-installed and Postgres 16
++ PostGIS 3.5. No Python code uses it yet — `uv sync` on the host remains
+the default workflow.
+
+```bash
+cp .env.example .env                                  # dev credentials, .env is gitignored
+docker compose up -d postgres                         # Postgres + PostGIS, bound to 127.0.0.1:5432
+docker compose up jupyter                             # Jupyter Lab on http://127.0.0.1:8888 (no token)
+docker compose run --rm dev uv run pytest             # one-off: run the test suite in a container
+docker compose run --rm dev                           # interactive shell inside the dev image
+```
+
+The `jupyter` service prints a `http://...:8888/lab?…` URL on stdout once it
+boots. The token is disabled on purpose (dev-only) and the port is bound to
+`127.0.0.1`, not `0.0.0.0` — do not run this unmodified on a shared host.
+
+**Bind mounts.** The repo is mounted at `/workspace` and the data tree at
+`/workspace/data` (`DESAKOTA_DATA_DIR` is set accordingly). The container's
+`.venv` is a named volume at `/opt/venv` so it can't be shadowed by the
+host-side `.venv` symlink.
+
+**Windows / WSL path handling.** The compose file uses relative bind mounts
+(`.:/workspace`) so it works from both Docker Desktop on Windows and native
+Docker in WSL. On Windows, run `docker compose` from inside this repo via
+either PowerShell or a WSL shell; both resolve `.` to the same path.
+Bind-mount performance from `/mnt/c` is subject to the usual WSL 9P penalty
+(see [Setup details](#setup-details)) — move the repo under `~/projects/…`
+on the WSL filesystem if iteration feels sluggish.
+
+**Postgres / PostGIS.** Credentials come from `.env`
+(`POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB`, defaults `postgres` /
+`postgres` / `desakota`). State lives in a named volume `pgdata`, so
+`docker compose down` keeps the database around; use
+`docker compose down -v` to wipe it.
+
 ## Layout
 
 ```
