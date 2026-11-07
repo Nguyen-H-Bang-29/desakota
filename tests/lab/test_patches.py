@@ -9,7 +9,7 @@ import pytest
 from shapely.geometry import LineString, MultiLineString, Polygon, box
 
 from desakota.crs import CRS_UTM
-from desakota.patches import (
+from desakota.lab.patches import (
     add_road_measures,
     compute_elongation,
     compute_rotated_rectangle_elongation,

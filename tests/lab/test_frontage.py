@@ -11,8 +11,12 @@ import rasterio
 from shapely.geometry import LineString, MultiLineString
 
 from desakota.crs import CRS_UTM
-from desakota.frontage import build_reference_line, build_road_pieces, detect_ribbon_runs
-from desakota.landcover import compute_frontage_counts
+from desakota.lab.frontage import (
+    build_reference_line,
+    build_road_pieces,
+    compute_frontage_counts,
+    detect_ribbon_runs,
+)
 
 LEGEND = {1: 'Water', 2: 'Trees', 7: 'Built area'}
 ORIGIN_X, ORIGIN_Y = 600_000.0, 2_350_000.0  # EPSG:32648, top-left corner

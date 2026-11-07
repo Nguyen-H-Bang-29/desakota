@@ -7,7 +7,7 @@ import pytest
 from shapely.geometry import box
 
 from desakota.crs import CRS_UTM
-from desakota.esda import build_queen_weights
+from desakota.lab.esda import build_queen_weights
 
 
 def _units(*boxes: tuple[float, float, float, float]) -> gpd.GeoDataFrame:
