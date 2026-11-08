@@ -1,0 +1,57 @@
+# Keep the build context small and the host venv out of the image.
+# The repo is bind-mounted at runtime, so most of what we skip here is
+# about excluding host-specific state from `docker build` — not about
+# hiding files from the running container.
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Virtual envs — the container builds its own at /opt/venv.
+# .venv on the host is often a symlink to ext4 (see CLAUDE.md); either way
+# it must not shadow the container's interpreter.
+.venv
+venv/
+.venv/
+
+# Env
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data tree — bind-mounted at runtime so no need to COPY it into the image.
+# Also likely huge (1.4 GB Geofabrik extract).
+data/
+
+# Git and editor state
+.git/
+.gitignore
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Build output
+outputs/
+dist/
+build/
+*.egg-info/
+
+# Docker files don't need to re-enter the context
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Worktree metadata (orca / git worktrees)
+.orca/

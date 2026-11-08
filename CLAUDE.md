@@ -136,16 +136,24 @@ not just get a final figure. In notebooks:
   Its boundaries come back as (lat, lng); `desakota.hexgrid` swaps them. Run
   `esda.Moran_Local` with `n_jobs=1`: parallel workers each copy the data and
   ran this 7 GB WSL out of memory at ~70k hexes (single-process takes ~10 s).
-- Also installed: `rasterstats`, `networkx` (chainage axis in `desakota.frontage`).
+- Also installed: `rasterstats`, `networkx` (chainage axis in `desakota.lab.frontage`).
 - dev: jupyterlab, ipykernel, pytest, ruff, pyright (strict), `pandas-stubs`,
   `types-shapely`. With the stubs, the remaining pyright noise is upstream
   `**kwargs` left untyped in geopandas/shapely signatures (`to_file`,
   `read_file`, `set_precision`). Suppress those with a narrow
   `# pyright: ignore[reportUnknownMemberType] -- <reason>`, never file-wide.
+- Container: `Dockerfile` + `docker-compose.yml` stand up a reproducible dev
+  stack — `python:3.14-slim-bookworm` with the GDAL/GEOS/PROJ apt stack, uv
+  from `ghcr.io/astral-sh/uv`, and PostGIS 16-3.5 bound to `127.0.0.1:5432`.
+  Scaffolding for the eventual FastAPI/Postgres phase; today the host `uv
+  sync` workflow remains the default. See README "Docker" for the four
+  commands (postgres, jupyter, pytest, shell).
 
-**Runs in WSL (Ubuntu 24.04) or Linux.** `uv` is in `~/.local/bin`, which may
-not be on `PATH` (prefix commands with `export PATH="$HOME/.local/bin:$PATH"`).
-Never create or run the `.venv` from Windows; the layouts are incompatible.
+**Host dev runs in WSL (Ubuntu 24.04) or Linux; the Docker stack is
+OS-agnostic.** On the host, `uv` is in `~/.local/bin`, which may not be on
+`PATH` (prefix commands with `export PATH="$HOME/.local/bin:$PATH"`). Never
+create or run the host `.venv` from Windows; the layouts are incompatible —
+use the Docker path on Windows if you don't have WSL.
 
 If the checkout is under `/mnt/c`, installs are slow but not hung: uv can't
 hardlink from its ext4 cache across 9P, so it copies every file (measured:
@@ -158,6 +166,15 @@ ext4 (sync in about 3 s); don't replace it with a real directory. Nothing loads
 
 - **Notebooks are exploratory.** Once a transform is worth keeping, move it
   into `desakota/` so ruff, pyright, and pytest see it, then import it back.
+- **Promoted vs. lab.** Code under `desakota/` is *promoted* — stack-ready,
+  the surface a FastAPI/Postgres build will consume. Code under
+  `desakota/lab/` is *staging* — hypothesis-shaped (tied to a specific
+  attempt), reusable across notebooks but not yet blessed for the stack.
+  **Promoted code must not import from `desakota.lab`**; lab may import from
+  promoted. Graduating a module from lab to promoted is a `git mv` plus a
+  note here. The verb catalog in "Naming conventions" has no "pick one of
+  many" entry; `get_` has been used (`get_landcover_item_for_tile`) matching
+  `get_landcover_legend`'s shape.
 - **Notebooks are numbered** in the order they are meant to be read.
 - **Never hardcode paths.** Use `DataLayout.from_env()`; the root is
   overridable via `DESAKOTA_DATA_DIR`.

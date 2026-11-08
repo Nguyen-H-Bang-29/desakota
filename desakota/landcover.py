@@ -20,7 +20,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from collections.abc import Sequence
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
@@ -33,8 +33,6 @@ import pystac
 import pystac_client
 import rasterio
 import rasterstats
-import shapely
-from numpy.typing import NDArray
 from rasterio.features import (
     rasterize,  # pyright: ignore[reportUnknownVariableType] -- rasterio stubs are incomplete
 )
@@ -43,7 +41,6 @@ from rasterio.windows import (
     bounds as window_bounds,  # pyright: ignore[reportUnknownVariableType] -- rasterio stubs are incomplete
 )
 from shapely.geometry import box
-from shapely.geometry.base import BaseGeometry
 
 ASSET_KEY: Final[str] = 'data'
 """Item asset holding the classified raster."""
@@ -53,9 +50,6 @@ _STRIP_ROWS: Final[int] = 2048
 
 _TESSELLATION_STRIP_ROWS: Final[int] = 512
 """Rows per strip when counting by cell; the int32 cell-id raster is 4 bytes/pixel."""
-
-_ZONE_SIMPLIFY_M: Final[float] = 20.0
-"""Tolerance for the road outline that bounds `compute_frontage_counts`'s pixel search."""
 
 
 def _open(fp: str | Path, mode: str = 'r', **profile: Any) -> Any:
@@ -77,6 +71,40 @@ def get_landcover_legend(
     """
     file_values = collection.item_assets[ASSET_KEY].properties['file:values']
     return {entry['values'][0]: entry['summary'] for entry in file_values}
+
+
+def get_landcover_item_for_tile(
+    items: Iterable[pystac.Item], tile_id_prefix: str = '48Q'
+) -> pystac.Item:
+    """Return the single search result whose id starts with a given UTM-tile prefix.
+
+    The corridor sits inside io-lulc's `48Q` supercell: a STAC search by bbox
+    may still return neighbouring tiles when the AOI's bounds brush them, so
+    the notebooks pick the `48Q` item explicitly rather than taking `items[0]`.
+
+    Args:
+        items: Candidate STAC items (e.g. from `search_items(...).items()`).
+        tile_id_prefix: UTM tile id the wanted item's id starts with. The
+            default `'48Q'` is the QL18 corridor's tile; this is deliberately
+            not a coverage-based picker — a wider AOI needs its own choice.
+
+    Returns:
+        The matching item.
+
+    Raises:
+        ValueError: If no item starts with the prefix, or more than one does
+            (the collection is one item per tile per year; two is a sign the
+            search returned duplicates and the caller should look at them).
+    """
+    matches = [item for item in items if item.id.startswith(tile_id_prefix)]
+    if not matches:
+        raise ValueError(f'no STAC item with id starting with {tile_id_prefix!r}')
+    if len(matches) > 1:
+        raise ValueError(
+            f'{len(matches)} STAC items start with {tile_id_prefix!r}: '
+            f'{[item.id for item in matches]}'
+        )
+    return matches[0]
 
 
 def fetch_landcover(
@@ -254,7 +282,7 @@ def compute_built_frac(
             extends beyond the raster.
     """
     with _open(raster_path) as src:
-        _require_inside(aoi, src)
+        require_inside_raster(aoi, src)
 
     # rasterstats ships no stubs at all; categorical=True with the default
     # geojson_out=False returns one class-label -> pixel-count dict per polygon,
@@ -317,9 +345,9 @@ def compute_built_frac_for_tessellation(
     geometries = cells.geometry.to_numpy()
 
     with _open(raster_path) as src:
-        _require_inside(cells, src)
+        require_inside_raster(cells, src)
         nodata: int = int(src.nodata) if src.nodata is not None else 0
-        col_off, row_off, width, height = _snapped_window(cells.total_bounds, src)
+        col_off, row_off, width, height = snapped_raster_window(cells.total_bounds, src)
         for row in range(row_off, row_off + height, _TESSELLATION_STRIP_ROWS):
             n_rows = min(_TESSELLATION_STRIP_ROWS, row_off + height - row)
             strip = Window(col_off, row, width, n_rows)  # pyright: ignore[reportCallIssue] -- Window is an attrs class the stubs leave untyped
@@ -348,151 +376,7 @@ def compute_built_frac_for_tessellation(
     return pd.Series(frac, index=cells.index, name='built_frac')
 
 
-FRONTAGE_COUNT_COLUMNS: Final = [
-    'station_id',
-    'side',
-    'depth_min_m',
-    'depth_max_m',
-    'n_valid_px',
-    'n_built_px',
-]
-
-
-def compute_frontage_counts(
-    pieces: gpd.GeoDataFrame,
-    raster_path: str | Path,
-    legend: dict[int, str],
-    built_area_label: str,
-    water_label: str,
-    *,
-    depth_edges_m: Sequence[float],
-    exclude: BaseGeometry | None = None,
-) -> pd.DataFrame:
-    """Count built and non-water pixels per station, road side and distance band.
-
-    Every pixel whose centre lies within `depth_edges_m[-1]` of a road piece, and
-    outside `exclude`, is assigned to its **nearest piece**, which gives it a
-    station, a distance and a side: left or right of the reference line's
-    direction (the piece's own left, flipped by its `direction_sign`). Assigning by
-    nearest piece partitions the pixels, so nothing is counted twice on bends or
-    between the two carriageways of a divided road, and pixels near a gap the
-    reference line jumps go to the mapped road on either side of it. A pixel
-    exactly on a piece's line counts as left.
-
-    Args:
-        pieces: Output of `desakota.frontage.build_road_pieces`, in the raster's CRS.
-        raster_path: Categorical land-cover raster, e.g. from `fetch_landcover`.
-        legend: Pixel value -> class name, from `get_landcover_legend`.
-        built_area_label: Class counted as built, e.g. `"Built area"`.
-        water_label: Class left out of `n_valid_px`, e.g. `"Water"`.
-        depth_edges_m: Increasing distance-band edges from the road centreline in
-            metres, e.g. (0, 30, 60, 100, 250, 500, 1000, 1500).
-        exclude: Area left out entirely, e.g. the road surface (centrelines
-            buffered by half the carriageway width), which the LULC maps as built.
-
-    Returns:
-        Long table with one row per (station, side, band) holding at least one
-        valid pixel: `station_id`, `side` (`"left"`/`"right"`), `depth_min_m`,
-        `depth_max_m`, `n_valid_px` (non-water, non-nodata) and `n_built_px`.
-        Keep counts rather than fractions so stations and bands can be pooled
-        before dividing.
-
-    Raises:
-        ValueError: If the edges are not increasing, the CRS does not match the
-            raster's, or the pieces' surroundings extend beyond it.
-    """
-    edges_m = np.asarray(depth_edges_m, dtype=np.float64)
-    if len(edges_m) < 2 or np.any(np.diff(edges_m) <= 0) or edges_m[0] < 0:
-        raise ValueError('depth_edges_m must be at least two increasing, non-negative values.')
-    max_depth_m = float(edges_m[-1])
-    n_bands = len(edges_m) - 1
-    value_of = {label: value for value, label in legend.items()}
-    built_value, water_value = value_of[built_area_label], value_of[water_label]
-
-    geometries = pieces.geometry.to_numpy()
-    station_of_piece = pieces['station_id'].to_numpy(dtype=np.int64)
-    sign_of_piece = pieces['direction_sign'].to_numpy(dtype=np.int64)
-    endpoints = shapely.get_coordinates(geometries).reshape(-1, 2, 2)  # two-point pieces
-    start_x, start_y = endpoints[:, 0, 0], endpoints[:, 0, 1]
-    end_x, end_y = endpoints[:, 1, 0], endpoints[:, 1, 1]
-    tree = shapely.STRtree(geometries)
-    # The zone only pre-selects candidate pixels (query_nearest's max_distance makes the
-    # exact cut), so a simplified line buffered by the tolerance more is enough, and
-    # buffering the raw union of ~10^4 pieces by kilometres exhausts GEOS's memory.
-    merged_road = shapely.line_merge(shapely.union_all(geometries))  # pyright: ignore[reportUnknownMemberType] -- shapely stubs leave **kwargs untyped
-    simple_road = shapely.simplify(merged_road, _ZONE_SIMPLIFY_M)
-    zone = shapely.buffer(simple_road, max_depth_m + _ZONE_SIMPLIFY_M, quad_segs=4)
-    zone_shapes: list[tuple[BaseGeometry, int]] = [(zone, 1)]
-    if exclude is not None and not exclude.is_empty:
-        zone_shapes.append((exclude, 0))  # later shapes overwrite earlier ones
-    # The raster must cover every point within max_depth_m of a piece (not the padded zone).
-    minx, miny, maxx, maxy = (float(v) for v in pieces.total_bounds)
-    reach_box = box(minx - max_depth_m, miny - max_depth_m, maxx + max_depth_m, maxy + max_depth_m)
-    reach = gpd.GeoDataFrame(geometry=[reach_box], crs=pieces.crs)
-
-    n_keys = (int(station_of_piece.max()) + 1) * 2 * n_bands
-    valid_px = np.zeros(n_keys, dtype=np.int64)
-    built_px = np.zeros(n_keys, dtype=np.int64)
-
-    with _open(raster_path) as src:
-        _require_inside(reach, src)
-        nodata: int = int(src.nodata) if src.nodata is not None else 0
-        col_off, row_off, width, height = _snapped_window(reach.total_bounds, src)
-        for row in range(row_off, row_off + height, _TESSELLATION_STRIP_ROWS):
-            n_rows = min(_TESSELLATION_STRIP_ROWS, row_off + height - row)
-            strip = Window(col_off, row, width, n_rows)  # pyright: ignore[reportCallIssue] -- Window is an attrs class the stubs leave untyped
-            strip_transform: Any = src.window_transform(strip)
-            in_zone = np.asarray(
-                rasterize(  # pyright: ignore[reportUnknownArgumentType] -- rasterio stubs are incomplete
-                    zone_shapes,
-                    out_shape=(n_rows, width),
-                    transform=strip_transform,
-                    fill=0,
-                    dtype='uint8',
-                ),
-                dtype=bool,
-            )
-            if not in_zone.any():
-                continue
-            lulc = np.asarray(src.read(1, window=strip), dtype=np.uint8)
-            rows, cols = np.nonzero(in_zone & (lulc != nodata) & (lulc != water_value))
-            if len(rows) == 0:
-                continue
-            px_x: NDArray[np.float64] = strip_transform.c + (cols + 0.5) * strip_transform.a
-            px_y: NDArray[np.float64] = strip_transform.f + (rows + 0.5) * strip_transform.e
-            (px_idx, piece_idx), dist_m = tree.query_nearest(
-                shapely.points(px_x, px_y),
-                max_distance=max_depth_m,
-                return_distance=True,
-                all_matches=False,
-            )
-            band = np.searchsorted(edges_m, dist_m, side='right') - 1
-            keep = (band >= 0) & (band < n_bands)
-            px_idx, piece_idx, band = px_idx[keep], piece_idx[keep], band[keep]
-            cross = (end_x[piece_idx] - start_x[piece_idx]) * (
-                px_y[px_idx] - start_y[piece_idx]
-            ) - (end_y[piece_idx] - start_y[piece_idx]) * (px_x[px_idx] - start_x[piece_idx])
-            is_right = (cross * sign_of_piece[piece_idx]) < 0
-            key = (station_of_piece[piece_idx] * 2 + is_right) * n_bands + band
-            is_built = lulc[rows[px_idx], cols[px_idx]] == built_value
-            valid_px += np.bincount(key, minlength=n_keys)
-            built_px += np.bincount(key[is_built], minlength=n_keys)
-
-    (observed,) = np.nonzero(valid_px)
-    band_of_key = observed % n_bands
-    return pd.DataFrame(
-        {
-            'station_id': observed // (2 * n_bands),
-            'side': np.where((observed // n_bands) % 2 == 1, 'right', 'left'),
-            'depth_min_m': edges_m[band_of_key],
-            'depth_max_m': edges_m[band_of_key + 1],
-            'n_valid_px': valid_px[observed],
-            'n_built_px': built_px[observed],
-        }
-    )[FRONTAGE_COUNT_COLUMNS]
-
-
-def _require_inside(aoi: gpd.GeoDataFrame, src: Any) -> None:
+def require_inside_raster(aoi: gpd.GeoDataFrame, src: Any) -> None:
     """Raise unless `aoi` shares the raster's CRS and lies within its bounds."""
     if aoi.crs != src.crs:
         raise ValueError(f'AOI CRS {aoi.crs} does not match raster CRS {src.crs}')
@@ -505,7 +389,7 @@ def _require_inside(aoi: gpd.GeoDataFrame, src: Any) -> None:
         )
 
 
-def _snapped_window(bbox: Any, src: Any) -> tuple[int, int, int, int]:
+def snapped_raster_window(bbox: Any, src: Any) -> tuple[int, int, int, int]:
     """(col_off, row_off, width, height) covering `bbox` (minx, miny, maxx, maxy), clamped."""
     inverse: Any = ~src.transform
     col_min, row_min = inverse @ (bbox[0], bbox[3])

@@ -1,0 +1,111 @@
+# Desakota dev stack.
+#
+# Three services today, extensible for a later FastAPI + worker + tileserver
+# + Svelte frontend phase. Keep service names free so FastAPI can slot in
+# next to `dev`, not inside it.
+#
+# Usage:
+#   docker compose up -d postgres                       # PostGIS, backgrounded
+#   docker compose up jupyter                           # Jupyter Lab on 8888
+#   docker compose run --rm dev uv run pytest           # one-off test run
+#   docker compose run --rm dev                         # interactive shell
+#
+# All services share the same Dockerfile; only the entrypoint differs.
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.5-alpine
+    container_name: desakota-postgres
+    restart: unless-stopped
+    environment:
+      # Pulled from .env (see .env.example). Compose warns but doesn't fail
+      # if .env is missing — healthcheck will fail loudly instead.
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-desakota}
+    ports:
+      # Bind to 127.0.0.1 to avoid exposing Postgres on LAN by accident.
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-desakota}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Interactive dev shell. Run one-offs via `docker compose run --rm dev …`.
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: desakota-dev:latest
+    container_name: desakota-dev
+    working_dir: /workspace
+    environment:
+      DESAKOTA_DATA_DIR: /workspace/data
+      # Make the running container see Postgres on the compose network.
+      # Harmless when postgres isn't up — nothing in the current phase
+      # reads these.
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-desakota}
+    volumes:
+      # Mount the repo at /workspace. Relative path so this works from both
+      # Docker Desktop on Windows and native Docker in WSL.
+      - .:/workspace
+      # Keep the container's venv out of the bind mount so it can't be
+      # clobbered by a host-side .venv (and vice versa).
+      - venv:/opt/venv
+    # No depends_on: postgres: users bring it up explicitly when they need
+    # it (`docker compose up -d postgres`). Keeps `docker compose run --rm dev …`
+    # from pulling in the DB for a one-off command.
+    # tty + stdin_open so `docker compose run` drops into a usable shell.
+    tty: true
+    stdin_open: true
+    command: ['/bin/bash']
+
+  # Jupyter Lab. Same image + mounts as dev; only the command differs.
+  # Token/password disabled on purpose — dev-only, bound to localhost by
+  # the port mapping below. Do NOT expose this service on a public host.
+  jupyter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: desakota-dev:latest
+    container_name: desakota-jupyter
+    working_dir: /workspace
+    environment:
+      DESAKOTA_DATA_DIR: /workspace/data
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-desakota}
+    ports:
+      - '127.0.0.1:${JUPYTER_PORT:-8888}:8888'
+    volumes:
+      - .:/workspace
+      - venv:/opt/venv
+    # Exec form so --ServerApp.token='' is passed as an empty arg literally,
+    # not re-parsed through a shell. Compose splits folded strings by spaces,
+    # which would eat the empty quotes.
+    command:
+      - uv
+      - run
+      - --no-sync
+      - jupyter
+      - lab
+      - --ip=0.0.0.0
+      - --port=8888
+      - --no-browser
+      - --allow-root
+      - --ServerApp.token=
+      - --ServerApp.password=
+      - --ServerApp.root_dir=/workspace
+
+volumes:
+  pgdata:
+  venv:

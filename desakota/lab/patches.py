@@ -151,6 +151,44 @@ def compute_elongation(outlines: gpd.GeoSeries) -> pd.Series:
     return elongation.astype(float).rename('elongation')
 
 
+def compute_rotated_rectangle_elongation(geometries: gpd.GeoSeries) -> pd.Series:
+    """Long side / short side of each geometry's **minimum rotated rectangle**.
+
+    This is the older, bounding-box elongation measure, kept as a comparison for
+    `compute_elongation` (equivalent rectangle of the alpha outline). A ribbon
+    bending with the road has a nearly-square minimum rotated rectangle, so this
+    measure reads a curved strip as *not* elongated, whereas the equivalent
+    rectangle still catches its length — hence the two live side by side in
+    notebook 04.
+
+    Args:
+        geometries: Polygons in a projected CRS (metres). The minimum rotated
+            rectangle is scale-dependent, so a geographic CRS would give
+            meaningless values; this is not enforced here.
+
+    Returns:
+        Elongation >= 1 per geometry, indexed like `geometries`. A degenerate
+        rectangle (zero-width or zero-length) returns 1.0.
+    """
+    return (
+        geometries.map(_rotated_rectangle_elongation)
+        .astype(float)
+        .rename('elongation_rotated_rect')
+    )
+
+
+def _rotated_rectangle_elongation(geometry: BaseGeometry) -> float:
+    rectangle = shapely.minimum_rotated_rectangle(geometry)  # pyright: ignore[reportUnknownMemberType] -- shapely stubs leave **kwargs untyped
+    if not isinstance(rectangle, Polygon):
+        return 1.0
+    x, y = rectangle.exterior.coords.xy
+    sides_m = np.hypot(np.diff(x[:3]), np.diff(y[:3]))
+    short = float(sides_m.min())
+    if short <= 0:
+        return 1.0
+    return float(sides_m.max() / short)
+
+
 def _label_connected(geometries: NDArray[np.object_]) -> NDArray[np.intp]:
     """Connected-component label per geometry; touching (within tolerance) = connected."""
     merged = shapely.union_all(shapely.buffer(geometries, _ADJACENCY_TOLERANCE_M))
